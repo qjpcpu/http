@@ -316,7 +316,7 @@ func MiddlewareCheckStatusCode(fn func(int) bool) Middleware {
 			}
 			if !fn(resp.StatusCode) {
 				data, _ := RepeatableReadResponse(resp)
-				return nil, fmt.Errorf("%s %s", resp.Status, data)
+				return nil, fmt.Errorf("%s %s %s %s", req.Method, req.URL.String(), resp.Status, data)
 			}
 			return resp, err
 		}
