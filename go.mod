@@ -1,6 +1,6 @@
 module github.com/qjpcpu/http
 
-go 1.22.8
+go 1.22
 
 require github.com/stretchr/testify v1.10.0
 
