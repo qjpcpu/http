@@ -30,6 +30,18 @@ type clientImpl struct {
 	middlewares []Middleware
 }
 
+func (client *clientImpl) Fork(withMiddlewares bool) Client {
+	cli := &clientImpl{
+		Client: &syshttp.Client{Transport: client.Client.Transport},
+	}
+	if withMiddlewares {
+		ms := make([]Middleware, len(client.middlewares))
+		copy(ms, client.middlewares)
+		cli.middlewares = ms
+	}
+	return cli
+}
+
 // EnableCookie use cookie
 func (client *clientImpl) EnableCookie() Client {
 	jar, _ := cookiejar.New(nil)

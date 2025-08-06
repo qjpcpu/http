@@ -36,7 +36,7 @@ func middlewareContext(next Endpoint) Endpoint {
 		}
 
 		/* download body */
-		next = middlewareSaveResponse(gv.BodySaver)(next)
+		next = middlewareSaveResponse(gv.BodySaver, gv.KeepRawResponse)(next)
 
 		/* log */
 		if gv.Debugger != nil {
@@ -77,8 +77,11 @@ func middlewareTimeout(tm time.Duration) Middleware {
 	}
 }
 
-func middlewareSaveResponse(w io.Writer) Middleware {
+func middlewareSaveResponse(w io.Writer, keepRawRes bool) Middleware {
 	return func(next Endpoint) Endpoint {
+		if keepRawRes {
+			return next
+		}
 		return func(req *syshttp.Request) (*syshttp.Response, error) {
 			res, err := next(req)
 			if res != nil && res.Body != nil {

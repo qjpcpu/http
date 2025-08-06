@@ -31,4 +31,5 @@ type Client interface {
 	PostForm(ctx context.Context, urlstr string, data map[string]interface{}, opts ...Option) *Response
 	PostJSON(ctx context.Context, urlstr string, data interface{}, opts ...Option) *Response
 	WithDialer(dialFn DialContextFunc) Client
+	Fork(withMiddlewares bool) Client
 }
