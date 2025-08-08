@@ -257,6 +257,24 @@ func (client *clientImpl) getOptionMiddlewares(opts ...Option) []Middleware {
 	return opt.Middlewares
 }
 
+func (client *clientImpl) SetMaxIdleConns(maxIdleConn int) Client {
+	if transport, ok := client.Client.Transport.(*syshttp.Transport); ok {
+		if maxIdleConn > 0 {
+			transport.MaxIdleConns = maxIdleConn
+		}
+	}
+	return client
+}
+
+func (client *clientImpl) SetIdleConnTimeout(idleTimeout time.Duration) Client {
+	if transport, ok := client.Client.Transport.(*syshttp.Transport); ok {
+		if idleTimeout > 0 {
+			transport.IdleConnTimeout = idleTimeout
+		}
+	}
+	return client
+}
+
 type Doer func(*syshttp.Request) (*syshttp.Response, error)
 
 func (hd Doer) Do(req *syshttp.Request) (*syshttp.Response, error) {

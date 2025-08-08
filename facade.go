@@ -32,4 +32,6 @@ type Client interface {
 	PostJSON(ctx context.Context, urlstr string, data interface{}, opts ...Option) *Response
 	WithDialer(dialFn DialContextFunc) Client
 	Fork(withMiddlewares bool) Client
+	SetMaxIdleConns(maxIdleConn int) Client
+	SetIdleConnTimeout(idleTimeout time.Duration) Client
 }
