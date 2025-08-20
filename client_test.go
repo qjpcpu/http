@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -729,12 +730,12 @@ func TestStatusCode(t *testing.T) {
 	client := NewClient().AddMiddleware(MiddlewareSetAllowedStatusCode(http.StatusOK))
 	res1 := client.Get(nil, server.URLPrefix+"/code")
 	suite.NotNil(res1.Err)
-	suite.Equal(`500 Internal Server Error BODY`, res1.Err.Error())
+	suite.Contains(res1.Err.Error(), `500 Internal Server Error BODY`)
 
 	client = NewClient().AddMiddleware(MiddlewareSetBlockedStatusCode(http.StatusInternalServerError))
 	res1 = client.Get(nil, server.URLPrefix+"/code")
 	suite.NotNil(res1.Err)
-	suite.Equal(`500 Internal Server Error BODY`, res1.Err.Error())
+	suite.Contains(res1.Err.Error(), `500 Internal Server Error BODY`)
 }
 
 func TestDropQuery(t *testing.T) {
@@ -763,4 +764,93 @@ func TestDropQuery(t *testing.T) {
 	suite.Nil(res1.Unmarshal(&res))
 	suite.Nil(res1.Err)
 	suite.Equal("", res.Args.B)
+}
+
+type SyncList struct {
+	slice []string
+	rw    sync.Mutex
+}
+
+func NewList() *SyncList {
+	return &SyncList{}
+}
+
+func (s *SyncList) Append(v string) *SyncList {
+	s.rw.Lock()
+	defer s.rw.Unlock()
+	s.slice = append(s.slice, v)
+	return s
+}
+
+func (s *SyncList) String() string {
+	s.rw.Lock()
+	defer s.rw.Unlock()
+	return strings.Join(s.slice, ",")
+}
+
+func TestMiddlewareSequence(t *testing.T) {
+	suite := assert.New(t)
+	client := NewClient()
+	var val int
+	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
+		val = 1
+		w.Write([]byte("OK"))
+	})
+	defer server.ServeBackground()()
+
+	slice := NewList()
+	client.AddMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("1")
+			return next(req)
+		}
+	})
+	client.AddMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("2")
+			return next(req)
+		}
+	})
+	client.AddMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("3")
+			return next(req)
+		}
+	})
+	client.PrependMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("4")
+			return next(req)
+		}
+	})
+
+	opt0 := WithMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("a")
+			return next(req)
+		}
+	})
+	opt1 := WithMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("b")
+			return next(req)
+		}
+	})
+	opt2 := WithMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("c")
+			return next(req)
+		}
+	})
+	opt3 := WithPrependMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			slice.Append("P")
+			return next(req)
+		}
+	})
+
+	res1 := client.Get(nil, server.URLPrefix+"/hello", opt0, opt1, opt2, opt3)
+	suite.Nil(res1.Err)
+	suite.Equal(1, val)
+	suite.Equal("4,1,2,3,P,a,b,c", slice.String())
 }

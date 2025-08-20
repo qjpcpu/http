@@ -25,6 +25,12 @@ func WithMiddleware(m Middleware) Option {
 	}
 }
 
+func WithPrependMiddleware(m Middleware) Option {
+	return func(opt *options) {
+		opt.Middlewares = append([]Middleware{m}, opt.Middlewares...)
+	}
+}
+
 func WithBeforeHook(hook func(*syshttp.Request)) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
 		return func(req *syshttp.Request) (*syshttp.Response, error) {
