@@ -9,6 +9,7 @@ import (
 	syshttp "net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -272,6 +273,12 @@ func drainBody(body io.ReadCloser) error {
 	return err
 }
 
+var (
+	// Use a single, seeded random source with a lock for concurrent safety.
+	randSource = rand.New(rand.NewSource(time.Now().UnixNano()))
+	randLock   sync.Mutex
+)
+
 func linearJitterBackoff(min, max time.Duration, attemptNum int) time.Duration {
 	// attemptNum always starts at zero but we want to start at 1 for multiplication
 	attemptNum++
@@ -282,14 +289,13 @@ func linearJitterBackoff(min, max time.Duration, attemptNum int) time.Duration {
 		return min * time.Duration(attemptNum)
 	}
 
-	// Seed rand; doing this every time is fine
-	rand := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
-
 	// Pick a random number that lies somewhere between the min and max and
 	// multiply by the attemptNum. attemptNum starts at zero so we always
 	// increment here. We first get a random percentage, then apply that to the
 	// difference between min and max, and add to min.
-	jitter := rand.Float64() * float64(max-min)
+	randLock.Lock()
+	jitter := randSource.Float64() * float64(max-min)
+	randLock.Unlock()
 	jitterMin := int64(jitter) + int64(min)
 	return time.Duration(jitterMin * int64(attemptNum))
 }

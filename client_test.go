@@ -5,21 +5,44 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
+func elementsMatch(t *testing.T, listA, listB interface{}) {
+	t.Helper()
+	valA := reflect.ValueOf(listA)
+	valB := reflect.ValueOf(listB)
+
+	if valA.Len() != valB.Len() {
+		t.Fatalf("slice lengths are not equal: %d != %d", valA.Len(), valB.Len())
+	}
+
+	// This is a simplified version for []int. A more generic one would be more complex.
+	sortedA := make([]int, valA.Len())
+	sortedB := make([]int, valB.Len())
+	for i := 0; i < valA.Len(); i++ {
+		sortedA[i] = valA.Index(i).Interface().(int)
+		sortedB[i] = valB.Index(i).Interface().(int)
+	}
+	sort.Ints(sortedA)
+	sort.Ints(sortedB)
+
+	if !reflect.DeepEqual(sortedA, sortedB) {
+		t.Fatalf("slices do not contain the same elements. got: %v, want: %v", listB, listA)
+	}
+}
+
 func TestSetMock(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{}
 	var val int
@@ -29,13 +52,18 @@ func TestSetMock(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, "http://ssssss")
-	suite.Nil(res1.Err)
-	suite.Equal(1, val)
-	suite.Equal(res, res1.Response)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if val != 1 {
+		t.Fatalf("expected val to be 1, got %d", val)
+	}
+	if res1.Response != res {
+		t.Fatalf("expected response to be %v, got %v", res, res1.Response)
+	}
 }
 
 func TestMiddleware(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	var val int
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
@@ -61,13 +89,16 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, server.URLPrefix+"/hello")
-	suite.Nil(res1.Err)
-	suite.Equal(1, val)
-	suite.ElementsMatch([]int{1, 3, 2}, slice)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if val != 1 {
+		t.Fatalf("expected val to be 1, got %d", val)
+	}
+	elementsMatch(t, []int{1, 3, 2}, slice)
 }
 
 func TestResponse(t *testing.T) {
-	suite := assert.New(t)
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte(`{"a":1,"b":"HELLO"}`))
 	})
@@ -80,14 +111,21 @@ func TestResponse(t *testing.T) {
 		B string `json:"b"`
 	}{}
 	res1 := client.Post(nil, server.URLPrefix+"/hello", nil)
-	suite.Nil(res1.Unmarshal(&res))
-	suite.Nil(res1.Err)
-	suite.Equal(1, res.A)
-	suite.Equal("HELLO", res.B)
+	if err := res1.Unmarshal(&res); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if res.A != 1 {
+		t.Fatalf("expected res.A to be 1, got %d", res.A)
+	}
+	if res.B != "HELLO" {
+		t.Fatalf("expected res.B to be 'HELLO', got %q", res.B)
+	}
 }
 
 func TestGet(t *testing.T) {
-	suite := assert.New(t)
 	server := NewMockServer().Handle("/get", func(w http.ResponseWriter, req *http.Request) {
 		args := make(map[string]string)
 		qs := req.URL.Query()
@@ -108,9 +146,15 @@ func TestGet(t *testing.T) {
 		} `json:"args"`
 	}{}
 	res1 := client.Get(nil, server.URLPrefix+"/get?a=hello")
-	suite.Nil(res1.Unmarshal(&res))
-	suite.Nil(res1.Err)
-	suite.Equal("hello", res.Args.A)
+	if err := res1.Unmarshal(&res); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if res.Args.A != "hello" {
+		t.Fatalf("expected res.Args.A to be 'hello', got %q", res.Args.A)
+	}
 }
 
 func interceptStdout() func() []byte {
@@ -136,7 +180,6 @@ func TestDebug(t *testing.T) {
 	server := NewMockServer()
 	defer server.ServeBackground()()
 
-	suite := assert.New(t)
 	client := NewClient().SetDebug(DefaultLogger)
 	res := struct {
 		A int    `json:"a"`
@@ -146,22 +189,31 @@ func TestDebug(t *testing.T) {
 		B: "HELLO",
 	}
 	res1 := client.PostJSON(nil, server.URLPrefix+"/echo", res)
-	suite.Nil(res1.Err)
-	suite.Nil(res1.Unmarshal(&res))
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if err := res1.Unmarshal(&res); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
 	out := string(stdout())
 
-	suite.Contains(out, server.URLPrefix+"/echo")
-	suite.Contains(out, `200 OK`)
-	suite.Contains(out, `"{\"a\":100,\"b\":\"HELLO\"}"`)
-	suite.Contains(out, `application/json`)
-	suite.Contains(out, `Response-Headers`)
-	suite.Contains(out, `Request-Body`)
-	suite.Contains(out, `[Response-Body]`)
+	for _, substr := range []string{
+		server.URLPrefix + "/echo",
+		`200 OK`,
+		`"{\"a\":100,\"b\":\"HELLO\"}"`,
+		`application/json`,
+		`Response-Headers`,
+		`Request-Body`,
+		`[Response-Body]`,
+	} {
+		if !strings.Contains(out, substr) {
+			t.Errorf("expected stdout to contain %q", substr)
+		}
+	}
 }
 
 func TestDebugWithErr(t *testing.T) {
 	stdout := interceptStdout()
-	suite := assert.New(t)
 	client := NewClient().SetDebug(DefaultLogger)
 	client.SetMock(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("user error")
@@ -174,14 +226,19 @@ func TestDebugWithErr(t *testing.T) {
 		B: "HELLO",
 	}
 	res1 := client.PostJSON(nil, "http://wwws", res)
-	suite.NotNil(res1.Err)
+	if res1.Err == nil {
+		t.Fatal("expected an error, but got nil")
+	}
 	out := string(stdout())
-	suite.Contains(out, `[Response Error]`)
-	suite.Contains(out, `user error`)
+	if !strings.Contains(out, `[Response Error]`) {
+		t.Errorf("expected stdout to contain %q", `[Response Error]`)
+	}
+	if !strings.Contains(out, `user error`) {
+		t.Errorf("expected stdout to contain %q", `user error`)
+	}
 }
 
 func TestRepeatableRead(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -200,12 +257,15 @@ func TestRepeatableRead(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, "http://sss")
-	suite.Nil(res1.Err)
-	suite.Equal("HELLO", string(res1.MustGetBody()))
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if body := string(res1.MustGetBody()); body != "HELLO" {
+		t.Fatalf("expected body to be 'HELLO', got %q", body)
+	}
 }
 
 func TestRepeatableReadRequest(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	reqBody := `GOGOGOGOGOGO`
 	res := &http.Response{
@@ -213,26 +273,35 @@ func TestRepeatableReadRequest(t *testing.T) {
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
 		data, e := ioutil.ReadAll(req.Body)
-		suite.Nil(e)
-		suite.Equal(reqBody, string(data))
+		if e != nil {
+			t.Fatalf("ReadAll in mock failed: %v", e)
+		}
+		if string(data) != reqBody {
+			t.Fatalf("expected request body %q, got %q", reqBody, string(data))
+		}
 		return res, nil
 	})
 	client.AddMiddleware(func(next Endpoint) Endpoint {
 		return func(req *http.Request) (*http.Response, error) {
 			data, e := RepeatableReadRequest(req)
-			suite.Nil(e)
-			suite.Equal(reqBody, string(data))
+			if e != nil {
+				t.Fatalf("RepeatableReadRequest failed: %v", e)
+			}
+			if string(data) != reqBody {
+				t.Fatalf("expected repeatable body %q, got %q", reqBody, string(data))
+			}
 			RepeatableReadRequest(req)
 			return next(req)
 		}
 	})
 
 	res1 := client.Post(nil, "http://sss", []byte(reqBody))
-	suite.Nil(res1.Err)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
 }
 
 func TestGlobalHeader(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -247,12 +316,15 @@ func TestGlobalHeader(t *testing.T) {
 	client.SetHeader("AA", "BB")
 
 	res1 := client.Get(nil, "http://sss")
-	suite.Nil(res1.Err)
-	suite.Equal("BB", hdl["aa"])
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if hdl["aa"] != "BB" {
+		t.Fatalf("expected header 'aa' to be 'BB', got %q", hdl["aa"])
+	}
 }
 
 func TestOptionMiddleware(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -268,11 +340,17 @@ func TestOptionMiddleware(t *testing.T) {
 		}
 	}
 	res1 := client.Get(nil, "http://sss", WithMiddleware(mid))
-	suite.Nil(res1.Err)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error on first call, got %v", res1.Err)
+	}
 	res1 = client.Get(nil, "http://sss")
-	suite.Nil(res1.Err)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error on second call, got %v", res1.Err)
+	}
 	/* execute once */
-	suite.Equal(1, val)
+	if val != 1 {
+		t.Fatalf("expected middleware to be called once, got %d", val)
+	}
 }
 
 type httpClientor interface {
@@ -285,7 +363,6 @@ func runHTTP(h httpClientor) (*http.Response, error) {
 }
 
 func TestDoer(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -302,12 +379,15 @@ func TestDoer(t *testing.T) {
 	}
 	doer := client.MakeDoer(WithMiddleware(mid))
 	_, err := runHTTP(doer)
-	suite.Nil(err)
-	suite.Equal(1, val)
+	if err != nil {
+		t.Fatalf("runHTTP failed: %v", err)
+	}
+	if val != 1 {
+		t.Fatalf("expected middleware to be called once, got %d", val)
+	}
 }
 
 func TestBeforeHook(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -317,12 +397,15 @@ func TestBeforeHook(t *testing.T) {
 	})
 	var val int
 	res1 := client.Get(nil, "http://sss", WithBeforeHook(func(*http.Request) { val++ }))
-	suite.Nil(res1.Err)
-	suite.Equal(1, val)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if val != 1 {
+		t.Fatalf("expected hook to be called once, got %d", val)
+	}
 }
 
 func TestAfterHook(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	res := &http.Response{
 		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
@@ -332,12 +415,15 @@ func TestAfterHook(t *testing.T) {
 	})
 	var val int
 	res1 := client.Get(nil, "http://sss", WithAfterHook(func(*http.Response) { val++ }))
-	suite.Nil(res1.Err)
-	suite.Equal(1, val)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if val != 1 {
+		t.Fatalf("expected hook to be called once, got %d", val)
+	}
 }
 
 func TestTimeout(t *testing.T) {
-	suite := assert.New(t)
 	stopChan := make(chan struct{}, 1)
 	server := NewMockServer().Handle("/delay", func(w http.ResponseWriter, req *http.Request) {
 		select {
@@ -351,14 +437,17 @@ func TestTimeout(t *testing.T) {
 	client := NewClient()
 	client.SetTimeout(1 * time.Millisecond)
 	res := client.Get(nil, server.URLPrefix+"/delay")
-	suite.NotNil(res.Err)
-	suite.Contains(res.Err.Error(), "context deadline exceeded")
+	if res.Err == nil {
+		t.Fatal("expected an error, but got nil")
+	}
+	if !strings.Contains(res.Err.Error(), "context deadline exceeded") {
+		t.Fatalf("expected error to contain 'context deadline exceeded', got %q", res.Err.Error())
+	}
 
 	close(stopChan)
 }
 
 func TestTimeoutOverwrite(t *testing.T) {
-	suite := assert.New(t)
 	stopChan := make(chan struct{}, 1)
 	server := NewMockServer().Handle("/delay", func(w http.ResponseWriter, req *http.Request) {
 		select {
@@ -372,14 +461,16 @@ func TestTimeoutOverwrite(t *testing.T) {
 	client := NewClient()
 	client.SetTimeout(100 * time.Hour)
 	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Millisecond)).Err
-	suite.NotNil(err)
-	suite.True(strings.Contains(err.Error(), `context deadline exceeded`) ||
-		strings.Contains(err.Error(), `timeout`))
+	if err == nil {
+		t.Fatal("expected an error, but got nil")
+	}
+	if !strings.Contains(err.Error(), "context deadline exceeded") && !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("expected error to contain 'context deadline exceeded' or 'timeout', got %q", err.Error())
+	}
 	close(stopChan)
 }
 
 func TestTimeoutOverwrite2(t *testing.T) {
-	suite := assert.New(t)
 	stopChan := make(chan struct{}, 1)
 	server := NewMockServer().Handle("/delay", func(w http.ResponseWriter, req *http.Request) {
 		select {
@@ -394,12 +485,13 @@ func TestTimeoutOverwrite2(t *testing.T) {
 	client.SetTimeout(1 * time.Millisecond)
 	/* should not timeout */
 	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Hour)).Err
-	suite.Nil(err)
+	if err != nil {
+		t.Fatalf("expected no error, but got %v", err)
+	}
 	close(stopChan)
 }
 
 func TestDownload(t *testing.T) {
-	suite := assert.New(t)
 	body := `"BJLKJLJLJL:JL:JKLJ`
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte(body))
@@ -410,12 +502,15 @@ func TestDownload(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	err := client.Download(nil, server.URLPrefix+"/hello", buf)
-	suite.Nil(err)
-	suite.Equal(body, buf.String())
+	if err != nil {
+		t.Fatalf("download failed: %v", err)
+	}
+	if buf.String() != body {
+		t.Fatalf("expected downloaded content %q, got %q", body, buf.String())
+	}
 }
 
 func TestMockServer(t *testing.T) {
-	suite := assert.New(t)
 	body := `"BJLKJLJLJL:JL:JKLJ`
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte(body))
@@ -424,12 +519,15 @@ func TestMockServer(t *testing.T) {
 	client := NewClient()
 
 	res := client.Get(nil, server.URLPrefix+"/hello")
-	suite.Nil(res.Err)
-	suite.Equal(body, string(res.MustGetBody()))
+	if res.Err != nil {
+		t.Fatalf("expected nil error, got %v", res.Err)
+	}
+	if bodyStr := string(res.MustGetBody()); bodyStr != body {
+		t.Fatalf("expected body %q, got %q", body, bodyStr)
+	}
 }
 
 func TestRetryCheckResponse(t *testing.T) {
-	suite := assert.New(t)
 	var val int
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		val++
@@ -451,22 +549,35 @@ func TestRetryCheckResponse(t *testing.T) {
 			return string(data) == "FAIL"
 		},
 	}))
-	suite.Nil(res.Err)
-	suite.Equal(3, val)
-	suite.Equal("OK", string(res.MustGetBody()))
+	if res.Err != nil {
+		t.Fatalf("expected nil error, got %v", res.Err)
+	}
+	if val != 3 {
+		t.Fatalf("expected 3 attempts, got %d", val)
+	}
+	if body := string(res.MustGetBody()); body != "OK" {
+		t.Fatalf("expected final body to be 'OK', got %q", body)
+	}
 }
 
 func TestRetryModifyRequest(t *testing.T) {
-	suite := assert.New(t)
 	var val int
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		val++
-		if val > 1 {
-			suite.Contains(req.URL.String(), "second")
-			suite.NotContains(req.URL.String(), "first")
-		} else {
-			suite.Contains(req.URL.String(), "first")
-			suite.NotContains(req.URL.String(), "second")
+		if val > 1 { // On retry
+			if !strings.Contains(req.URL.String(), "second") {
+				t.Errorf("expected URL to contain 'second' on retry, got: %s", req.URL.String())
+			}
+			if strings.Contains(req.URL.String(), "first") {
+				t.Errorf("URL should not contain 'first' on retry, got: %s", req.URL.String())
+			}
+		} else { // First attempt
+			if !strings.Contains(req.URL.String(), "first") {
+				t.Errorf("expected URL to contain 'first' on first attempt, got: %s", req.URL.String())
+			}
+			if strings.Contains(req.URL.String(), "second") {
+				t.Errorf("URL should not contain 'second' on first attempt, got: %s", req.URL.String())
+			}
 		}
 		if val < 3 {
 			w.Write([]byte("FAIL"))
@@ -495,22 +606,29 @@ func TestRetryModifyRequest(t *testing.T) {
 			return next(req)
 		}
 	}))
-	suite.Nil(res.Err)
-	suite.Equal(3, val)
-	suite.Equal("OK", string(res.MustGetBody()))
+	if res.Err != nil {
+		t.Fatalf("expected nil error, got %v", res.Err)
+	}
+	if val != 3 {
+		t.Fatalf("expected 3 attempts, got %d", val)
+	}
+	if body := string(res.MustGetBody()); body != "OK" {
+		t.Fatalf("expected final body to be 'OK', got %q", body)
+	}
 }
 
 func TestRetryModifyRequestByPrevMiddleware(t *testing.T) {
-	suite := assert.New(t)
 	var val int
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
 		val++
 		if val > 1 {
-			suite.Contains(req.URL.String(), "extra")
-			suite.NotContains(req.URL.String(), "first")
+			if !strings.Contains(req.URL.String(), "extra") {
+				t.Errorf("expected URL to contain 'extra' on retry, got: %s", req.URL.String())
+			}
 		} else {
-			suite.Contains(req.URL.String(), "first")
-			suite.NotContains(req.URL.String(), "extra")
+			if !strings.Contains(req.URL.String(), "first") {
+				t.Errorf("expected URL to contain 'first' on first attempt, got: %s", req.URL.String())
+			}
 		}
 		if val < 3 {
 			w.Write([]byte("FAIL"))
@@ -548,13 +666,18 @@ func TestRetryModifyRequestByPrevMiddleware(t *testing.T) {
 			return next(req)
 		}
 	}))
-	suite.Nil(res.Err)
-	suite.Equal(3, val)
-	suite.Equal("OK", string(res.MustGetBody()))
+	if res.Err != nil {
+		t.Fatalf("expected nil error, got %v", res.Err)
+	}
+	if val != 3 {
+		t.Fatalf("expected 3 attempts, got %d", val)
+	}
+	if body := string(res.MustGetBody()); body != "OK" {
+		t.Fatalf("expected final body to be 'OK', got %q", body)
+	}
 }
 
 func TestOverwriteRetry(t *testing.T) {
-	suite := assert.New(t)
 	var val int
 	client := NewClient()
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
@@ -567,18 +690,20 @@ func TestOverwriteRetry(t *testing.T) {
 	res := client.Get(nil, "http://hello", WithRetry(RetryOption{
 		RetryMax: 0,
 	}))
-	suite.NotNil(res.Err)
-	suite.Equal(1, val)
+	if res.Err == nil {
+		t.Fatal("expected an error, but got nil")
+	}
+	if val != 1 {
+		t.Fatalf("expected only 1 attempt, got %d", val)
+	}
 }
 
 func TestSetHeader(t *testing.T) {
-	suite := assert.New(t)
 	server := NewMockServer().Handle("/header", func(w http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("Host") == "" {
 			req.Header.Set("Host", req.Host)
 		}
 		data, _ := json.Marshal(req.Header)
-		t.Log(string(data))
 		w.Write(data)
 	})
 	defer server.ServeBackground()()
@@ -590,153 +715,90 @@ func TestSetHeader(t *testing.T) {
 		"c":    "eS",
 		"host": "sssssss",
 	}))
-	suite.Nil(res1.Err)
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
 	headers := make(http.Header)
-	res1.Unmarshal(&headers)
-	suite.Equal("BB", headers.Get("AA"))
-	suite.Equal("eS", headers.Get("c"))
-	suite.Equal("sssssss", headers.Get("host"))
+	if err := res1.Unmarshal(&headers); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if headers.Get("AA") != "BB" {
+		t.Errorf("expected header AA to be 'BB', got %q", headers.Get("AA"))
+	}
+	if headers.Get("c") != "eS" {
+		t.Errorf("expected header c to be 'eS', got %q", headers.Get("c"))
+	}
+	if headers.Get("host") != "sssssss" {
+		t.Errorf("expected header host to be 'sssssss', got %q", headers.Get("host"))
+	}
 }
-
-/*
-func TestPSMResolve(t *testing.T) {
-	suite := assert.New(t)
-	client := NewClient()
-	client.SetMock(func(*http.Request) (*http.Response, error) {
-		res := &http.Response{}
-		return res, nil
-	})
-	client.SetPsmResolver(func(string) ([]discovery.Endpoint, error) {
-		e := discovery.Endpoint{Host: "127.0.0.1"}
-		e.Tags.Env = `prod`
-		return []discovery.Endpoint{e}, nil
-	})
-
-	err := client.Get(nil, "http://$people.atsx.talent_stagingx/hello", WithBeforeHook(func(req *http.Request) {
-		suite.NotEqual("$people.atsx.talent_stagingx", req.URL.Host)
-	})).Err
-	suite.Nil(err)
-
-	err = client.Get(nil, "http://$people.atsx.talent_stagingx/hello", WithBeforeHook(func(req *http.Request) {
-		req.Host = "google.com"
-	}), WithBeforeHook(func(req *http.Request) {
-		suite.NotEqual("$people.atsx.talent_stagingx", req.URL.Host)
-		suite.Equal("google.com", req.Host)
-	})).Err
-	suite.Nil(err)
-}
-
-func TestPSMResolveWithRetry(t *testing.T) {
-	suite := assert.New(t)
-	client := NewClient()
-	var cnt int
-	ferr := errors.New("ERROR-X")
-	ipMap := make(map[string]bool)
-	client.SetMock(func(req *http.Request) (*http.Response, error) {
-		ipMap[req.URL.Host] = true
-		cnt++
-		return nil, ferr
-	})
-	client.SetPsmResolver(func(string) ([]discovery.Endpoint, error) {
-		e := discovery.Endpoint{Host: "127.0.0.1"}
-		e.Tags.Env = `prod`
-		return []discovery.Endpoint{e}, nil
-	})
-	client.AddMiddleware(RetryMiddleware(RetryOption{
-		RetryMax:     2,
-		RetryWaitMin: time.Millisecond * 1,
-		RetryWaitMax: time.Millisecond * 3,
-	}))
-	err := client.Get(nil, "http://$people.atsx.talent_staging/hello", WithBeforeHook(func(req *http.Request) {
-		suite.NotEqual("$people.atsx.talent_staging", req.URL.Host)
-	})).Err
-	suite.Equal(err, ferr)
-	suite.Equal(3, cnt)
-	suite.True(len(ipMap) > 0)
-}
-
-func TestPSMResolveWithRetryOverwrite(t *testing.T) {
-	suite := assert.New(t)
-	client := NewClient().AddMiddleware(RetryMiddleware(RetryOption{RetryMax: 2}))
-	var cnt int
-	ferr := errors.New("ERROR-X")
-	ipMap := make(map[string]bool)
-	client.SetMock(func(req *http.Request) (*http.Response, error) {
-		ipMap[req.URL.Host] = true
-		cnt++
-		return nil, ferr
-	})
-	client.SetPsmResolver(func(string) ([]discovery.Endpoint, error) {
-		e := discovery.Endpoint{Host: "127.0.0.1"}
-		e.Tags.Env = `prod`
-		return []discovery.Endpoint{e}, nil
-	})
-	client.AddMiddleware(RetryMiddleware(RetryOption{
-		RetryMax:     2,
-		RetryWaitMin: time.Millisecond * 1,
-		RetryWaitMax: time.Millisecond * 3,
-	}))
-	err := client.Get(nil, "http://$people.atsx.talent_x/hello", WithBeforeHook(func(req *http.Request) {
-		suite.NotEqual("$people.atsx.talent_x", req.URL.Host)
-	}), WithMiddleware(RetryMiddleware(RetryOption{RetryMax: 0}))).Err
-	suite.Equal(err, ferr)
-	suite.Equal(1, cnt)
-	suite.Equal(len(ipMap), 1)
-}
-*/
 
 func TestContextCancel(t *testing.T) {
-	suite := assert.New(t)
 	body := []byte(strings.Repeat("x", 65535))
 	server := NewMockServer().Handle("/header", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("content-length", fmt.Sprint(len(body)))
+		// Simulate a delay to ensure the client has time to process the cancellation.
+		time.Sleep(50 * time.Millisecond)
 		w.Write(body)
 	})
 	defer server.ServeBackground()()
 	client := NewClient()
-	res1 := client.Get(nil, server.URLPrefix+"/header")
-	suite.Nil(res1.Err)
-	_, err := res1.GetBody()
-	suite.Error(err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel the context before the request
+
+	res1 := client.Get(ctx, server.URLPrefix+"/header")
+	if res1.Err == nil {
+		t.Fatal("expected an error due to canceled context, but got nil")
+	}
+	if !strings.Contains(res1.Err.Error(), "context canceled") {
+		t.Errorf("expected error to be 'context canceled', got %q", res1.Err.Error())
+	}
 }
 
 func TestDownload2(t *testing.T) {
-	suite := assert.New(t)
 	body := []byte(strings.Repeat("x", 65535))
 	server := NewMockServer().Handle("/header", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("content-length", fmt.Sprint(len(body)))
 		w.Write(body)
 	})
 	defer server.ServeBackground()()
 	client := NewClient()
 	buf := new(bytes.Buffer)
 	err := client.Download(nil, server.URLPrefix+"/header", buf)
-	suite.Nil(err)
-	suite.Equal(len(body), buf.Len())
+	if err != nil {
+		t.Fatalf("download failed: %v", err)
+	}
+	if buf.Len() != len(body) {
+		t.Fatalf("expected downloaded size to be %d, got %d", len(body), buf.Len())
+	}
 }
 
 func TestStatusCode(t *testing.T) {
-	suite := assert.New(t)
 	body := []byte(`BODY`)
 	server := NewMockServer().Handle("/code", func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(500)
-		w.Header().Set("content-length", fmt.Sprint(len(body)))
 		w.Write(body)
 	})
 	defer server.ServeBackground()()
 	client := NewClient().AddMiddleware(MiddlewareSetAllowedStatusCode(http.StatusOK))
 	res1 := client.Get(nil, server.URLPrefix+"/code")
-	suite.NotNil(res1.Err)
-	suite.Contains(res1.Err.Error(), `500 Internal Server Error BODY`)
+	if res1.Err == nil {
+		t.Fatal("expected an error for disallowed status code, but got nil")
+	}
+	if !strings.Contains(res1.Err.Error(), `500 Internal Server Error BODY`) {
+		t.Errorf("error message mismatch, got: %q", res1.Err.Error())
+	}
 
 	client = NewClient().AddMiddleware(MiddlewareSetBlockedStatusCode(http.StatusInternalServerError))
 	res1 = client.Get(nil, server.URLPrefix+"/code")
-	suite.NotNil(res1.Err)
-	suite.Contains(res1.Err.Error(), `500 Internal Server Error BODY`)
+	if res1.Err == nil {
+		t.Fatal("expected an error for blocked status code, but got nil")
+	}
+	if !strings.Contains(res1.Err.Error(), `500 Internal Server Error BODY`) {
+		t.Errorf("error message mismatch, got: %q", res1.Err.Error())
+	}
 }
 
 func TestDropQuery(t *testing.T) {
-	suite := assert.New(t)
 	server := NewMockServer().Handle("/get", func(w http.ResponseWriter, req *http.Request) {
 		args := make(map[string]string)
 		qs := req.URL.Query()
@@ -758,9 +820,15 @@ func TestDropQuery(t *testing.T) {
 		} `json:"args"`
 	}{}
 	res1 := client.Get(nil, server.URLPrefix+"/get?a=hello&b=world", WithoutQuery("b"))
-	suite.Nil(res1.Unmarshal(&res))
-	suite.Nil(res1.Err)
-	suite.Equal("", res.Args.B)
+	if err := res1.Unmarshal(&res); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if res.Args.B != "" {
+		t.Fatalf("expected query param 'b' to be dropped, but got value %q", res.Args.B)
+	}
 }
 
 type SyncList struct {
@@ -786,7 +854,6 @@ func (s *SyncList) String() string {
 }
 
 func TestMiddlewareSequence(t *testing.T) {
-	suite := assert.New(t)
 	client := NewClient()
 	var val int
 	server := NewMockServer().Handle("/hello", func(w http.ResponseWriter, req *http.Request) {
@@ -847,7 +914,435 @@ func TestMiddlewareSequence(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, server.URLPrefix+"/hello", opt0, opt1, opt2, opt3)
-	suite.Nil(res1.Err)
-	suite.Equal(1, val)
-	suite.Equal("4,1,2,3,P,a,b,c", slice.String())
+	if res1.Err != nil {
+		t.Fatalf("expected nil error, got %v", res1.Err)
+	}
+	if val != 1 {
+		t.Fatalf("expected val to be 1, got %d", val)
+	}
+	if want := "4,1,2,3,P,a,b,c"; slice.String() != want {
+		t.Fatalf("middleware sequence mismatch, got %q, want %q", slice.String(), want)
+	}
+}
+
+func TestClientMethods(t *testing.T) {
+	// Test Fork
+	client := NewClient()
+	var forkVal int
+	client.AddMiddleware(func(next Endpoint) Endpoint {
+		return func(req *http.Request) (*http.Response, error) {
+			forkVal++
+			return next(req)
+		}
+	})
+	client.SetMock(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	forkedWithMiddleware := client.Fork(true)
+	forkedWithoutMiddleware := client.Fork(false)
+
+	forkedWithMiddleware.Get(context.Background(), "/test")
+	if forkVal != 1 {
+		t.Errorf("Expected middleware to run on forked client (with middlewares), forkVal = %d", forkVal)
+	}
+
+	forkedWithoutMiddleware.Get(context.Background(), "/test")
+	if forkVal != 1 {
+		t.Errorf("Expected middleware to NOT run on forked client (without middlewares), forkVal = %d", forkVal)
+	}
+
+	// Test EnableCookie
+	cookieClient := NewClient().EnableCookie()
+	if c, ok := cookieClient.(*clientImpl); !ok || c.Client.Jar == nil {
+		t.Error("EnableCookie should set a cookie jar")
+	}
+
+	// Test DisableKeepAlive
+	keepAliveClient := NewClient().DisableKeepAlive(true)
+	if c, ok := keepAliveClient.(*clientImpl); !ok || c.Client.Transport.(*http.Transport).DisableKeepAlives != true {
+		t.Error("DisableKeepAlive(true) was not set correctly")
+	}
+
+	// Test SetMaxIdleConns & SetIdleConnTimeout
+	transportClient := NewClient().SetMaxIdleConns(50).SetIdleConnTimeout(15 * time.Second)
+	if c, ok := transportClient.(*clientImpl); !ok {
+		t.Fatal("Could not cast client to clientImpl")
+	} else {
+		transport := c.Client.Transport.(*http.Transport)
+		if transport.MaxIdleConns != 50 {
+			t.Errorf("Expected MaxIdleConns to be 50, got %d", transport.MaxIdleConns)
+		}
+		if transport.IdleConnTimeout != 15*time.Second {
+			t.Errorf("Expected IdleConnTimeout to be 15s, got %v", transport.IdleConnTimeout)
+		}
+	}
+	// Test with invalid values
+	NewClient().SetMaxIdleConns(0).SetIdleConnTimeout(0)
+
+	// Test client-level hooks
+	var beforeHookVal, afterHookVal int
+	hookClient := NewClient().
+		AddBeforeHook(func(r *http.Request) { beforeHookVal++ }).
+		AddAfterHook(func(r *http.Response) { afterHookVal++ })
+	hookClient.SetMock(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
+	})
+	hookClient.Get(context.Background(), "/hooks")
+	if beforeHookVal != 1 {
+		t.Errorf("Client-level before hook was not called. Got %d, want 1", beforeHookVal)
+	}
+	if afterHookVal != 1 {
+		t.Errorf("Client-level after hook was not called. Got %d, want 1", afterHookVal)
+	}
+}
+
+func TestDoRequest(t *testing.T) {
+	server := NewMockServer().Handle("/dorequest", func(w http.ResponseWriter, req *http.Request) {
+		w.Write([]byte("dorequest-ok"))
+	})
+	defer server.ServeBackground()()
+
+	client := NewClient()
+	req, _ := http.NewRequest("GET", server.URLPrefix+"/dorequest", nil)
+	res := client.DoRequest(req)
+
+	if res.Err != nil {
+		t.Fatalf("DoRequest failed: %v", res.Err)
+	}
+	body, err := res.GetBody()
+	if err != nil {
+		t.Fatalf("Failed to get body: %v", err)
+	}
+	if string(body) != "dorequest-ok" {
+		t.Errorf("Expected body 'dorequest-ok', got %q", string(body))
+	}
+}
+
+func TestPostForm(t *testing.T) {
+	server := NewMockServer().Handle("/form", func(w http.ResponseWriter, req *http.Request) {
+		req.ParseForm()
+		if req.Form.Get("user") != "tester" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("wrong user"))
+			return
+		}
+		if req.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("wrong content type"))
+			return
+		}
+		w.Write([]byte("form-ok"))
+	})
+	defer server.ServeBackground()()
+
+	client := NewClient()
+	formData := map[string]interface{}{
+		"user": "tester",
+		"id":   123,
+	}
+	res := client.PostForm(context.Background(), server.URLPrefix+"/form", formData)
+	if res.Err != nil {
+		t.Fatalf("PostForm failed: %v", res.Err)
+	}
+	body, _ := res.GetBody()
+	if string(body) != "form-ok" {
+		t.Errorf("Expected 'form-ok', got %q", string(body))
+	}
+}
+
+func TestDeleteAndPut(t *testing.T) {
+	server := NewMockServer().Handle("/delete", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "DELETE" {
+			t.Errorf("Expected DELETE method, got %s", req.Method)
+		}
+		w.Write([]byte("deleted"))
+	}).Handle("/put", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "PUT" {
+			t.Errorf("Expected PUT method, got %s", req.Method)
+		}
+		w.Write([]byte("put-ok"))
+	})
+	defer server.ServeBackground()()
+
+	client := NewClient()
+	resDelete := client.Delete(context.Background(), server.URLPrefix+"/delete", nil)
+	if body, _ := resDelete.GetBody(); string(body) != "deleted" {
+		t.Errorf("Expected 'deleted', got %q", string(body))
+	}
+
+	resPut := client.Put(context.Background(), server.URLPrefix+"/put", nil)
+	if body, _ := resPut.GetBody(); string(body) != "put-ok" {
+		t.Errorf("Expected 'put-ok', got %q", string(body))
+	}
+}
+
+func TestPostJSONTypes(t *testing.T) {
+	server := NewMockServer().Handle("/json", func(w http.ResponseWriter, req *http.Request) {
+		body, _ := ioutil.ReadAll(req.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+	})
+	defer server.ServeBackground()()
+	client := NewClient()
+
+	// Test with string
+	resStr := client.PostJSON(context.Background(), server.URLPrefix+"/json", `{"type":"string"}`)
+	if body, _ := resStr.GetBody(); string(body) != `{"type":"string"}` {
+		t.Errorf("PostJSON with string failed, got %q", string(body))
+	}
+
+	// Test with nil
+	resNil := client.PostJSON(context.Background(), server.URLPrefix+"/json", nil)
+	if body, _ := resNil.GetBody(); string(body) != "" {
+		t.Errorf("PostJSON with nil failed, got body %q", string(body))
+	}
+
+	// Test with io.Reader
+	reader := strings.NewReader(`{"type":"reader"}`)
+	resReader := client.PostJSON(context.Background(), server.URLPrefix+"/json", reader)
+	if body, _ := resReader.GetBody(); string(body) != `{"type":"reader"}` {
+		t.Errorf("PostJSON with io.Reader failed, got %q", string(body))
+	}
+
+	// Test with io.Reader error
+	errReader := &errorReader{}
+	resErrReader := client.PostJSON(context.Background(), server.URLPrefix+"/json", errReader)
+	if resErrReader.Err == nil {
+		t.Error("Expected an error when reading from errorReader, got nil")
+	}
+
+	// Test with JSON marshal error
+	invalidJSON := make(chan int)
+	resInvalid := client.PostJSON(context.Background(), server.URLPrefix+"/json", invalidJSON)
+	if resInvalid.Err == nil {
+		t.Error("Expected an error when marshaling invalid JSON, got nil")
+	}
+	if _, ok := resInvalid.Err.(*json.UnsupportedTypeError); !ok {
+		t.Errorf("Expected json.UnsupportedTypeError, got %T", resInvalid.Err)
+	}
+}
+
+type errorReader struct{}
+
+func (e *errorReader) Read(p []byte) (n int, err error) {
+	return 0, errors.New("read error")
+}
+
+func TestURLRewriter(t *testing.T) {
+	RegisterRewriter("testproto", func(ctx context.Context, urlstr string) string {
+		return strings.Replace(urlstr, "testproto://", "http://", 1)
+	})
+
+	server := NewMockServer().Handle("/rewritten", func(w http.ResponseWriter, req *http.Request) {
+		w.Write([]byte("rewritten-ok"))
+	})
+	defer server.ServeBackground()()
+
+	client := NewClient()
+	rewrittenURL := strings.Replace(server.URLPrefix, "http://", "testproto://", 1) + "/rewritten"
+
+	res := client.Get(context.Background(), rewrittenURL)
+	if res.Err != nil {
+		t.Fatalf("URL rewriter test failed: %v", res.Err)
+	}
+	body, _ := res.GetBody()
+	if string(body) != "rewritten-ok" {
+		t.Errorf("Expected 'rewritten-ok', got %q", string(body))
+	}
+
+	// Test no-op
+	resNoOp := client.Get(context.Background(), server.URLPrefix+"/rewritten")
+	if resNoOp.Err != nil {
+		t.Fatalf("URL rewriter no-op test failed: %v", resNoOp.Err)
+	}
+}
+
+func TestSetRetry(t *testing.T) {
+	var attemptCount int
+
+	client := NewClient()
+	// Mock an endpoint that fails twice before succeeding.
+	client.SetMock(func(req *http.Request) (*http.Response, error) {
+		attemptCount++
+		if attemptCount < 3 {
+			return nil, errors.New("transient network error")
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       ioutil.NopCloser(strings.NewReader("success")),
+		}, nil
+	})
+
+	// Configure the client to retry up to 2 times.
+	client.SetRetry(RetryOption{
+		RetryMax:     2,
+		RetryWaitMin: 1 * time.Millisecond,
+	})
+
+	res := client.Get(context.Background(), "http://test-set-retry")
+
+	if res.Err != nil {
+		t.Fatalf("Expected request to succeed after retries, but got error: %v", res.Err)
+	}
+	if attemptCount != 3 {
+		t.Fatalf("Expected 3 attempts (1 initial + 2 retries), but got %d", attemptCount)
+	}
+}
+
+func TestWithDialer(t *testing.T) {
+	server := NewMockServer().Handle("/dialer", func(w http.ResponseWriter, req *http.Request) {
+		w.Write([]byte("dialer-ok"))
+	})
+	defer server.ServeBackground()()
+
+	dialerCalled := false
+	defaultDialer := &net.Dialer{}
+
+	client := NewClient().WithDialer(func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialerCalled = true
+		return defaultDialer.DialContext(ctx, network, addr)
+	})
+
+	res := client.Get(context.Background(), server.URLPrefix+"/dialer")
+
+	if res.Err != nil {
+		t.Fatalf("Request with custom dialer failed: %v", res.Err)
+	}
+
+	if !dialerCalled {
+		t.Fatal("Custom dialer was not called")
+	}
+}
+
+func TestDoWithInvalidURL(t *testing.T) {
+	client := NewClient()
+	// A URL with a control character is invalid
+	invalidURL := "http://invalid-url\x7f.com"
+	res := client.Get(context.Background(), invalidURL)
+	if res.Err == nil {
+		t.Fatal("Expected an error for invalid URL, but got nil")
+	}
+	if !strings.Contains(res.Err.Error(), "invalid control character") {
+		t.Errorf("Expected error to be about 'invalid control character', got: %v", res.Err)
+	}
+}
+
+func TestResponseMethods(t *testing.T) {
+	// Test Unmarshal with pre-existing error
+	errResponse := &Response{Err: errors.New("initial error")}
+	var data interface{}
+	err := errResponse.Unmarshal(&data)
+	if err == nil || err.Error() != "initial error" {
+		t.Errorf("Expected Unmarshal to return the initial error, got: %v", err)
+	}
+
+	// Test Unmarshal with malformed JSON
+	malformedJSONResponse := &Response{
+		Response: &http.Response{
+			Body: ioutil.NopCloser(strings.NewReader(`{"key": "value`)), // Missing closing brace
+		},
+	}
+	err = malformedJSONResponse.Unmarshal(&data)
+	if err == nil {
+		t.Fatal("Expected Unmarshal to fail on malformed JSON, but it succeeded")
+	}
+
+	// Test MustGetBody panic
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected MustGetBody to panic on a response with an error, but it did not")
+			}
+		}()
+		errResponse.MustGetBody()
+	}()
+
+	// Test Result()
+	res, err := errResponse.Result()
+	if res != errResponse.Response {
+		t.Error("Result() did not return the correct response object")
+	}
+	if err != errResponse.Err {
+		t.Error("Result() did not return the correct error")
+	}
+
+	// Test Save()
+	saveResponse := &Response{
+		Response: &http.Response{
+			Body: ioutil.NopCloser(strings.NewReader("save-test")),
+		},
+	}
+	var buf bytes.Buffer
+	err = saveResponse.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() failed: %v", err)
+	}
+	if buf.String() != "save-test" {
+		t.Errorf("Expected saved content to be 'save-test', got %q", buf.String())
+	}
+
+	// Test Save() with nil body
+	nilBodyResponse := &Response{Response: &http.Response{Body: nil}}
+	err = nilBodyResponse.Save(&buf)
+	if err != nil {
+		t.Errorf("Save() with nil body should not produce an error, got %v", err)
+	}
+}
+
+func TestMiddlewareAndTransportEdgeCases(t *testing.T) {
+	// Test middleware with nil parameters
+	client := NewClient()
+	client.SetMock(func(req *http.Request) (*http.Response, error) {
+		// Test that debug middleware with nil logger doesn't crash
+		getValue(req).Debugger = nil
+		// Test that save response middleware with nil writer doesn't crash
+		getValue(req).BodySaver = nil
+		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
+	})
+	res := client.Get(context.Background(), "/test")
+	if res.Err != nil {
+		t.Fatalf("Request failed on middleware edge case test: %v", res.Err)
+	}
+
+	// Test transport methods with non-default transport
+	customTransportClient := NewClient()
+	// Replace the transport with a different type
+	customTransportClient.(*clientImpl).Client.Transport = &httpRoundingTripper{}
+	// These calls should not panic
+	customTransportClient.DisableKeepAlive(true)
+	customTransportClient.SetMaxIdleConns(10)
+	customTransportClient.SetIdleConnTimeout(10 * time.Second)
+}
+
+type httpRoundingTripper struct{}
+
+func (rt *httpRoundingTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestPostJSONWithBytes(t *testing.T) {
+	server := NewMockServer().Handle("/json-bytes", func(w http.ResponseWriter, req *http.Request) {
+		body, _ := ioutil.ReadAll(req.Body)
+		w.Write(body)
+	})
+	defer server.ServeBackground()()
+	client := NewClient()
+
+	payload := []byte(`{"type":"bytes"}`)
+	res := client.PostJSON(context.Background(), server.URLPrefix+"/json-bytes", payload)
+	if body, _ := res.GetBody(); string(body) != string(payload) {
+		t.Errorf("PostJSON with []byte failed, got %q, want %q", string(body), string(payload))
+	}
+}
+
+func TestStatusCodeCheckEdgeCases(t *testing.T) {
+	client := NewClient().AddMiddleware(MiddlewareSetAllowedStatusCode()).AddMiddleware(MiddlewareSetBlockedStatusCode())
+	client.SetMock(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNotFound}, nil
+	})
+	res := client.Get(context.Background(), "/test")
+	if res.Err != nil {
+		t.Fatalf("Expected no error when status code checkers are empty, got %v", res.Err)
+	}
 }

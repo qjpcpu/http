@@ -69,8 +69,18 @@ type Client interface {
 	PostJSON(ctx context.Context, urlstr string, data any, opts ...Option) *Response
 	// WithDialer allows setting a custom dialer function for the client's Transport.
 	WithDialer(dialFn DialContextFunc) Client
-	// Fork creates a new client instance.
-	// If withMiddlewares is true, it copies all middlewares from the current client to the new instance.
+	// Fork creates a new "child" client instance that shares the parent's underlying
+	// http.Transport. This is highly efficient as it allows connection pooling and reuse
+	// across multiple, logically distinct clients.
+	//
+	// Use Case:
+	// Create a "template" client with common configurations (e.g., User-Agent, default timeout,
+	// retry policy). Then, fork it to create specialized clients for different services,
+	// each with its own specific settings (e.g., auth tokens, shorter timeouts) without
+	// losing the performance benefits of a shared connection pool.
+	//
+	// If withMiddlewares is true, the new client inherits a copy of the parent's middlewares.
+	// If false, the new client starts with a clean middleware chain.
 	Fork(withMiddlewares bool) Client
 	// SetMaxIdleConns sets the maximum number of idle connections for the Transport.
 	SetMaxIdleConns(maxIdleConn int) Client
