@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -697,10 +696,8 @@ func TestContextCancel(t *testing.T) {
 	client := NewClient()
 	res1 := client.Get(nil, server.URLPrefix+"/header")
 	suite.Nil(res1.Err)
-	data, err := res1.GetBody()
-	suite.Nil(err)
-	i, _ := strconv.Atoi(res1.Header.Get("Content-Length"))
-	suite.Equal(i, len(data))
+	_, err := res1.GetBody()
+	suite.Error(err)
 }
 
 func TestDownload2(t *testing.T) {

@@ -67,15 +67,6 @@ func WithBody(w io.Writer) Option {
 	})
 }
 
-func WithRawResponse(b bool) Option {
-	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
-			getValue(req).KeepRawResponse = b
-			return next(req)
-		}
-	})
-}
-
 func WithAfterHook(hook func(*syshttp.Response)) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
 		return func(req *syshttp.Request) (*syshttp.Response, error) {

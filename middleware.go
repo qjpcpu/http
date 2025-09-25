@@ -36,7 +36,7 @@ func middlewareContext(next Endpoint) Endpoint {
 		}
 
 		/* download body */
-		next = middlewareSaveResponse(gv.BodySaver, gv.KeepRawResponse)(next)
+		next = middlewareSaveResponse(gv.BodySaver)(next)
 
 		/* log */
 		if gv.Debugger != nil {
@@ -77,32 +77,42 @@ func middlewareTimeout(tm time.Duration) Middleware {
 	}
 }
 
-func middlewareSaveResponse(w io.Writer, keepRawRes bool) Middleware {
+func middlewareSaveResponse(w io.Writer) Middleware {
 	return func(next Endpoint) Endpoint {
-		if keepRawRes {
+		if w == nil {
 			return next
 		}
 		return func(req *syshttp.Request) (*syshttp.Response, error) {
 			res, err := next(req)
 			if res != nil && res.Body != nil {
-				if w != nil {
-					defer res.Body.Close()
-					if _, err := io.Copy(w, res.Body); err != nil {
-						return nil, err
-					}
-				} else {
-					if _, err := RepeatableReadResponse(res); err != nil {
-						return nil, err
-					}
+				defer res.Body.Close()
+				if _, err := io.Copy(w, res.Body); err != nil {
+					return nil, err
 				}
 			}
-
 			return res, err
 		}
 	}
 }
 
-type HTTPLogger func(context.Context, *TransportInfo)
+type HTTPLogger interface {
+	Log(context.Context, *TransportInfo)
+	Enable() bool
+}
+
+type http_logger struct {
+	fn     HTTPLoggerFn
+	toggle func() bool
+}
+
+func (self http_logger) Log(ctx context.Context, info *TransportInfo) { self.fn(ctx, info) }
+func (self http_logger) Enable() bool                                 { return self.toggle() }
+
+type HTTPLoggerFn func(context.Context, *TransportInfo)
+
+func BuildLogger(toggle func() bool, fn HTTPLoggerFn) HTTPLogger {
+	return http_logger{fn: fn, toggle: toggle}
+}
 
 type TransportEntity struct {
 	Header http.Header
@@ -120,7 +130,9 @@ type TransportInfo struct {
 	Response *TransportEntity
 }
 
-func DefaultLogger(ctx context.Context, info *TransportInfo) {
+var DefaultLogger = BuildLogger(func() bool { return true }, defaultLogger)
+
+func defaultLogger(ctx context.Context, info *TransportInfo) {
 	w := os.Stdout
 	/* status line */
 	fmt.Fprintf(
@@ -161,7 +173,7 @@ func DefaultLogger(ctx context.Context, info *TransportInfo) {
 func middlewareDebug(loggerFn HTTPLogger) Middleware {
 	return func(next Endpoint) Endpoint {
 		return func(req *syshttp.Request) (*syshttp.Response, error) {
-			if loggerFn == nil {
+			if loggerFn == nil || !loggerFn.Enable() {
 				return next(req)
 			}
 			info := &TransportInfo{}
@@ -190,7 +202,7 @@ func middlewareDebug(loggerFn HTTPLogger) Middleware {
 					return resBody
 				}
 			}
-			loggerFn(req.Context(), info)
+			loggerFn.Log(req.Context(), info)
 			return res, err
 		}
 	}

@@ -14,13 +14,12 @@ const (
 )
 
 type gValue struct {
-	BodySaver       io.Writer
-	KeepRawResponse bool
-	Timeout         time.Duration
-	Mock            Endpoint
-	Debugger        HTTPLogger
-	RetryOption     *RetryOption
-	RetryHooks      []RetryHook
+	BodySaver   io.Writer
+	Timeout     time.Duration
+	Mock        Endpoint
+	Debugger    HTTPLogger
+	RetryOption *RetryOption
+	RetryHooks  []RetryHook
 }
 
 func getValue(req *syshttp.Request) *gValue {
