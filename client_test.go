@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -952,15 +953,9 @@ func TestClientMethods(t *testing.T) {
 		t.Errorf("Expected middleware to NOT run on forked client (without middlewares), forkVal = %d", forkVal)
 	}
 
-	// Test EnableCookie
-	cookieClient := NewClient().EnableCookie()
-	if c, ok := cookieClient.(*clientImpl); !ok || c.Client.Jar == nil {
-		t.Error("EnableCookie should set a cookie jar")
-	}
-
 	// Test DisableKeepAlive
 	keepAliveClient := NewClient().DisableKeepAlive(true)
-	if c, ok := keepAliveClient.(*clientImpl); !ok || c.Client.Transport.(*http.Transport).DisableKeepAlives != true {
+	if c, ok := keepAliveClient.(*clientImpl); !ok || c.transport.DisableKeepAlives != true {
 		t.Error("DisableKeepAlive(true) was not set correctly")
 	}
 
@@ -969,7 +964,7 @@ func TestClientMethods(t *testing.T) {
 	if c, ok := transportClient.(*clientImpl); !ok {
 		t.Fatal("Could not cast client to clientImpl")
 	} else {
-		transport := c.Client.Transport.(*http.Transport)
+		transport := c.transport
 		if transport.MaxIdleConns != 50 {
 			t.Errorf("Expected MaxIdleConns to be 50, got %d", transport.MaxIdleConns)
 		}
@@ -1290,31 +1285,6 @@ func TestResponseMethods(t *testing.T) {
 	}
 }
 
-func TestMiddlewareAndTransportEdgeCases(t *testing.T) {
-	// Test middleware with nil parameters
-	client := NewClient()
-	client.SetMock(func(req *http.Request) (*http.Response, error) {
-		// Test that debug middleware with nil logger doesn't crash
-		getValue(req).Debugger = nil
-		// Test that save response middleware with nil writer doesn't crash
-		getValue(req).BodySaver = nil
-		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
-	})
-	res := client.Get(context.Background(), "/test")
-	if res.Err != nil {
-		t.Fatalf("Request failed on middleware edge case test: %v", res.Err)
-	}
-
-	// Test transport methods with non-default transport
-	customTransportClient := NewClient()
-	// Replace the transport with a different type
-	customTransportClient.(*clientImpl).Client.Transport = &httpRoundingTripper{}
-	// These calls should not panic
-	customTransportClient.DisableKeepAlive(true)
-	customTransportClient.SetMaxIdleConns(10)
-	customTransportClient.SetIdleConnTimeout(10 * time.Second)
-}
-
 type httpRoundingTripper struct{}
 
 func (rt *httpRoundingTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -1344,5 +1314,61 @@ func TestStatusCodeCheckEdgeCases(t *testing.T) {
 	res := client.Get(context.Background(), "/test")
 	if res.Err != nil {
 		t.Fatalf("Expected no error when status code checkers are empty, got %v", res.Err)
+	}
+}
+
+func TestTCPKeepAlive(t *testing.T) {
+	server := NewTCPServer()
+	server.Start()
+	defer server.Stop()
+
+	url := fmt.Sprintf("http://%s/ping", server.addr)
+	client := NewClient()
+	res, err := client.Get(context.Background(), url).GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res) != "PONG" {
+		t.Fatalf("bad response `%s`", string(res))
+	}
+	res, err = client.Get(context.Background(), url).GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res) != "PONG" {
+		t.Fatalf("bad response `%s`", string(res))
+	}
+	if server.Connections() != 1 {
+		t.Fatalf("keep alive fail %d", server.Connections())
+	}
+}
+
+func TestTCPKeepAliveWhenUserSetTimeoutContext(t *testing.T) {
+	server := NewTCPServer()
+	server.Start()
+	defer server.Stop()
+
+	url := fmt.Sprintf("http://%s/ping", server.addr)
+	client := NewClient()
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*1)
+	res, err := client.Get(ctx, url).GetBody()
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res) != "PONG" {
+		t.Fatalf("bad response `%s`", string(res))
+	}
+	ctx, cancel = context.WithDeadline(context.TODO(), time.Now().Add(time.Second))
+	res, err = client.Get(ctx, url).GetBody()
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res) != "PONG" {
+		t.Fatalf("bad response `%s`", string(res))
+	}
+	if server.Connections() != 1 {
+		t.Fatalf("keep alive fail %d", server.Connections())
 	}
 }

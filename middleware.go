@@ -8,7 +8,6 @@ import (
 	"net/http"
 	syshttp "net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 )
@@ -44,11 +43,6 @@ func middlewareContext(next Endpoint) Endpoint {
 			next = middlewareDebug(gv.Debugger)(next)
 		}
 
-		/* timeout */
-		if gv.Timeout > 0 {
-			next = middlewareTimeout(gv.Timeout)(next)
-		}
-
 		/* retry */
 		if gv.RetryOption != nil && gv.RetryOption.RetryMax > 0 {
 			next = middlewareRetry(gv.RetryOption)(next)
@@ -60,21 +54,6 @@ func middlewareContext(next Endpoint) Endpoint {
 func middlewareSetMock(fn func(*syshttp.Request) (*syshttp.Response, error)) Middleware {
 	return func(next Endpoint) Endpoint {
 		return fn
-	}
-}
-
-func middlewareTimeout(tm time.Duration) Middleware {
-	return func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
-			ctx, cancel := context.WithTimeout(req.Context(), tm)
-			defer cancel()
-			req = req.WithContext(ctx)
-			res, err := next(req)
-			if err != nil && (strings.Contains(err.Error(), `context`) || strings.Contains(err.Error(), "timeout")) {
-				err = fmt.Errorf("%v timeout:%v", err, tm)
-			}
-			return res, err
-		}
 	}
 }
 

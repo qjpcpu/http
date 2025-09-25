@@ -9,8 +9,6 @@ import (
 
 // Client defines the interface for an HTTP client.
 type Client interface {
-	// EnableCookie enables the cookie jar, allowing the client to handle cookies automatically.
-	EnableCookie() Client
 	// SetTimeout sets the default request timeout for the client.
 	SetTimeout(tm time.Duration) Client
 	// DisableKeepAlive sets whether to disable HTTP keep-alives.
