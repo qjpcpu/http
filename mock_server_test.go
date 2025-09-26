@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -51,7 +50,7 @@ func Echo(w http.ResponseWriter, req *http.Request) {
 		header[k] = req.Header.Get(k)
 	}
 
-	body, _ := ioutil.ReadAll(req.Body)
+	body, _ := io.ReadAll(req.Body)
 
 	output, _ := json.Marshal(map[string]interface{}{
 		"args":    args,
@@ -136,7 +135,7 @@ func (s *TCPServer) handlePing(conn net.Conn) {
 		StatusCode:    http.StatusOK,
 		ProtoMajor:    1,
 		ProtoMinor:    1,
-		Body:          ioutil.NopCloser(strings.NewReader("PONG")),
+		Body:          io.NopCloser(strings.NewReader("PONG")),
 		ContentLength: 4,
 	}
 	resp.Write(conn)

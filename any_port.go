@@ -3,7 +3,7 @@ package http
 import (
 	"errors"
 	"net"
-	nethttp "net/http"
+	"net/http"
 	"strconv"
 	"time"
 )
@@ -28,7 +28,7 @@ func (ln tcpKeepAliveListener) Accept() (net.Conn, error) {
 
 // ServerOnAnyPort handle
 type ServerOnAnyPort struct {
-	server *nethttp.Server
+	server *http.Server
 	addr   string
 	fn     func() error
 }
@@ -51,17 +51,17 @@ func (sp *ServerOnAnyPort) Serve() error {
 }
 
 // ListenOnAnyPort serve http on any port
-func ListenOnAnyPort(h nethttp.Handler) *ServerOnAnyPort {
+func ListenOnAnyPort(h http.Handler) *ServerOnAnyPort {
 	return listenOnAnyPort(h, "")
 }
 
-func ListenOnAnyLocalPort(h nethttp.Handler) *ServerOnAnyPort {
+func ListenOnAnyLocalPort(h http.Handler) *ServerOnAnyPort {
 	return listenOnAnyPort(h, "127.0.0.1")
 }
 
-func listenOnAnyPort(h nethttp.Handler, ip string) *ServerOnAnyPort {
+func listenOnAnyPort(h http.Handler, ip string) *ServerOnAnyPort {
 	sp := &ServerOnAnyPort{}
-	server := &nethttp.Server{Handler: h}
+	server := &http.Server{Handler: h}
 	ln, err := net.Listen("tcp", ip+":0")
 	if err != nil {
 		sp.fn = func() error {

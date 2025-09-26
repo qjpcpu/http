@@ -5,14 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	syshttp "net/http"
+	"net/http"
 )
 
 type Request struct {
-	*syshttp.Request
+	*http.Request
 }
 
-func FromRequest(req *syshttp.Request) *Request {
+func FromRequest(req *http.Request) *Request {
 	return &Request{Request: req}
 }
 
@@ -21,12 +21,12 @@ func (req *Request) AddRetryHook(hook RetryHook) {
 }
 
 type Response struct {
-	*syshttp.Response
+	*http.Response
 	Err error
 	ctx context.Context
 }
 
-func (r *Response) Result() (*syshttp.Response, error) {
+func (r *Response) Result() (*http.Response, error) {
 	return r.Response, r.Err
 }
 
@@ -84,9 +84,9 @@ func (r *Response) Save(w io.Writer) error {
 	return err
 }
 
-func buildResponse(ctx context.Context, res *syshttp.Response, err error) *Response {
+func buildResponse(ctx context.Context, res *http.Response, err error) *Response {
 	if res == nil {
-		res = &syshttp.Response{}
+		res = &http.Response{}
 	}
 	return &Response{ctx: ctx, Response: res, Err: err}
 }

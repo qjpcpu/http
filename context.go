@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 	"io"
-	syshttp "net/http"
+	"net/http"
 	"time"
 )
 
@@ -22,7 +22,7 @@ type gValue struct {
 	RetryHooks  []RetryHook
 }
 
-func getValue(req *syshttp.Request) *gValue {
+func getValue(req *http.Request) *gValue {
 	if gv := req.Context().Value(keyContext); gv == nil {
 		return nil
 	} else if val, ok := gv.(*gValue); ok {
@@ -31,7 +31,7 @@ func getValue(req *syshttp.Request) *gValue {
 	return nil
 }
 
-func getOrCreateValue(req *syshttp.Request) *gValue {
+func getOrCreateValue(req *http.Request) *gValue {
 	if gv := getValue(req); gv == nil {
 		gv := &gValue{}
 		return gv
@@ -40,7 +40,7 @@ func getOrCreateValue(req *syshttp.Request) *gValue {
 	}
 }
 
-func setValue(req *syshttp.Request, v *gValue) *syshttp.Request {
+func setValue(req *http.Request, v *gValue) *http.Request {
 	if v != nil {
 		ctx := context.WithValue(req.Context(), keyContext, v)
 		req = req.WithContext(ctx)

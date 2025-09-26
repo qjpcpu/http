@@ -6,25 +6,24 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
-	syshttp "net/http"
 	"os"
 	"sync"
 	"time"
 )
 
-type Endpoint func(*syshttp.Request) (*syshttp.Response, error)
+type Endpoint func(*http.Request) (*http.Response, error)
 
 type Middleware func(Endpoint) Endpoint
 
 func middlewareInitCtx(next Endpoint) Endpoint {
-	return func(req *syshttp.Request) (*syshttp.Response, error) {
+	return func(req *http.Request) (*http.Response, error) {
 		req = setValue(req, getOrCreateValue(req))
 		return next(req)
 	}
 }
 
 func middlewareContext(next Endpoint) Endpoint {
-	return func(req *syshttp.Request) (*syshttp.Response, error) {
+	return func(req *http.Request) (*http.Response, error) {
 		gv := getValue(req)
 		if gv == nil {
 			return next(req)
@@ -51,7 +50,7 @@ func middlewareContext(next Endpoint) Endpoint {
 	}
 }
 
-func middlewareSetMock(fn func(*syshttp.Request) (*syshttp.Response, error)) Middleware {
+func middlewareSetMock(fn func(*http.Request) (*http.Response, error)) Middleware {
 	return func(next Endpoint) Endpoint {
 		return fn
 	}
@@ -62,7 +61,7 @@ func middlewareSaveResponse(w io.Writer) Middleware {
 		if w == nil {
 			return next
 		}
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			res, err := next(req)
 			if res != nil && res.Body != nil {
 				defer res.Body.Close()
@@ -152,7 +151,7 @@ func defaultLogger(ctx context.Context, info *TransportInfo) {
 
 func middlewareDebug(loggerFn HTTPLogger) Middleware {
 	return func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			if loggerFn == nil || !loggerFn.Enable() {
 				return next(req)
 			}
@@ -190,7 +189,7 @@ func middlewareDebug(loggerFn HTTPLogger) Middleware {
 
 func RetryMiddleware(retryOpt RetryOption) Middleware {
 	return func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			getValue(req).RetryOption = &retryOpt
 			return next(req)
 		}
@@ -204,14 +203,14 @@ func middlewareRetry(retryOpt *RetryOption) Middleware {
 	if retryOpt.RetryWaitMax <= 0 {
 		retryOpt.RetryWaitMax = 3 * time.Second
 	}
-	shouldRetry := func(res *syshttp.Response, err error) bool {
+	shouldRetry := func(res *http.Response, err error) bool {
 		return err != nil
 	}
 	if retryOpt.CheckResponse != nil {
 		shouldRetry = retryOpt.CheckResponse
 	}
 	return func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (res *syshttp.Response, err error) {
+		return func(req *http.Request) (res *http.Response, err error) {
 			retryHookList := getValue(req).RetryHooks
 			for i := 0; i < retryOpt.RetryMax+1; i++ {
 				/* save request body */
@@ -309,7 +308,7 @@ func MiddlewareSetBlockedStatusCode(codes ...int) Middleware {
 
 func MiddlewareCheckStatusCode(fn func(int) bool) Middleware {
 	return func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			resp, err := next(req)
 			if err != nil {
 				return resp, err

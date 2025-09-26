@@ -2,7 +2,7 @@ package http
 
 import (
 	"io"
-	syshttp "net/http"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -31,9 +31,9 @@ func WithPrependMiddleware(m Middleware) Option {
 	}
 }
 
-func WithBeforeHook(hook func(*syshttp.Request)) Option {
+func WithBeforeHook(hook func(*http.Request)) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			hook(req)
 			return next(req)
 		}
@@ -42,7 +42,7 @@ func WithBeforeHook(hook func(*syshttp.Request)) Option {
 
 func WithTimeout(tm time.Duration) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			getValue(req).Timeout = tm
 			return next(req)
 		}
@@ -51,7 +51,7 @@ func WithTimeout(tm time.Duration) Option {
 
 func WithRetry(opt RetryOption) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			getValue(req).RetryOption = &opt
 			return next(req)
 		}
@@ -60,16 +60,16 @@ func WithRetry(opt RetryOption) Option {
 
 func WithBody(w io.Writer) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			getValue(req).BodySaver = w
 			return next(req)
 		}
 	})
 }
 
-func WithAfterHook(hook func(*syshttp.Response)) Option {
+func WithAfterHook(hook func(*http.Response)) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			res, err := next(req)
 			if err == nil && res != nil {
 				hook(res)
@@ -81,7 +81,7 @@ func WithAfterHook(hook func(*syshttp.Response)) Option {
 
 func WithHeaders(hdr map[string]string) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			setRequestHeader(req, hdr)
 			return next(req)
 		}
@@ -90,7 +90,7 @@ func WithHeaders(hdr map[string]string) Option {
 
 func WithoutQuery(k string) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *syshttp.Request) (*syshttp.Response, error) {
+		return func(req *http.Request) (*http.Response, error) {
 			if qs := req.URL.Query(); qs != nil {
 				qs.Del(k)
 				req.URL.RawQuery = qs.Encode()
@@ -104,16 +104,16 @@ func WithHeader(k, v string) Option {
 	return WithHeaders(map[string]string{k: v})
 }
 
-type RetryHook func(*syshttp.Request, int)
+type RetryHook func(*http.Request, int)
 
 type RetryOption struct {
 	RetryMax      int
-	RetryWaitMin  time.Duration                                     // optional
-	RetryWaitMax  time.Duration                                     // optional
-	CheckResponse func(*syshttp.Response, error) (shouldRetry bool) // optional
+	RetryWaitMin  time.Duration                                  // optional
+	RetryWaitMax  time.Duration                                  // optional
+	CheckResponse func(*http.Response, error) (shouldRetry bool) // optional
 }
 
-func setRequestHeader(req *syshttp.Request, header map[string]string) {
+func setRequestHeader(req *http.Request, header map[string]string) {
 	for k, v := range header {
 		req.Header.Set(k, v)
 		if strings.ToLower(k) == "host" {

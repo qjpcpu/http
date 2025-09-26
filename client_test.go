@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -167,7 +167,7 @@ func interceptStdout() func() []byte {
 	os.Stderr = temp
 	return func() []byte {
 		temp.Sync()
-		data, _ := ioutil.ReadFile(fname)
+		data, _ := os.ReadFile(fname)
 		temp.Close()
 		os.Remove(fname)
 		os.Stderr = stderr
@@ -242,7 +242,7 @@ func TestDebugWithErr(t *testing.T) {
 func TestRepeatableRead(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(*http.Request) (*http.Response, error) {
 		return res, nil
@@ -270,10 +270,10 @@ func TestRepeatableReadRequest(t *testing.T) {
 	client := NewClient()
 	reqBody := `GOGOGOGOGOGO`
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
-		data, e := ioutil.ReadAll(req.Body)
+		data, e := io.ReadAll(req.Body)
 		if e != nil {
 			t.Fatalf("ReadAll in mock failed: %v", e)
 		}
@@ -305,7 +305,7 @@ func TestRepeatableReadRequest(t *testing.T) {
 func TestGlobalHeader(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	hdl := make(map[string]string)
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
@@ -328,7 +328,7 @@ func TestGlobalHeader(t *testing.T) {
 func TestOptionMiddleware(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
 		return res, nil
@@ -366,7 +366,7 @@ func runHTTP(h httpClientor) (*http.Response, error) {
 func TestDoer(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
 		return res, nil
@@ -391,7 +391,7 @@ func TestDoer(t *testing.T) {
 func TestBeforeHook(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
 		return res, nil
@@ -409,7 +409,7 @@ func TestBeforeHook(t *testing.T) {
 func TestAfterHook(t *testing.T) {
 	client := NewClient()
 	res := &http.Response{
-		Body: ioutil.NopCloser(strings.NewReader("HELLO")),
+		Body: io.NopCloser(strings.NewReader("HELLO")),
 	}
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
 		return res, nil
@@ -937,7 +937,7 @@ func TestClientMethods(t *testing.T) {
 		}
 	})
 	client.SetMock(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
+		return &http.Response{Body: io.NopCloser(strings.NewReader("ok"))}, nil
 	})
 
 	forkedWithMiddleware := client.Fork(true)
@@ -981,7 +981,7 @@ func TestClientMethods(t *testing.T) {
 		AddBeforeHook(func(r *http.Request) { beforeHookVal++ }).
 		AddAfterHook(func(r *http.Response) { afterHookVal++ })
 	hookClient.SetMock(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{Body: ioutil.NopCloser(strings.NewReader("ok"))}, nil
+		return &http.Response{Body: io.NopCloser(strings.NewReader("ok"))}, nil
 	})
 	hookClient.Get(context.Background(), "/hooks")
 	if beforeHookVal != 1 {
@@ -1074,7 +1074,7 @@ func TestDeleteAndPut(t *testing.T) {
 
 func TestPostJSONTypes(t *testing.T) {
 	server := NewMockServer().Handle("/json", func(w http.ResponseWriter, req *http.Request) {
-		body, _ := ioutil.ReadAll(req.Body)
+		body, _ := io.ReadAll(req.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(body)
 	})
@@ -1165,7 +1165,7 @@ func TestSetRetry(t *testing.T) {
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       ioutil.NopCloser(strings.NewReader("success")),
+			Body:       io.NopCloser(strings.NewReader("success")),
 		}, nil
 	})
 
@@ -1235,7 +1235,7 @@ func TestResponseMethods(t *testing.T) {
 	// Test Unmarshal with malformed JSON
 	malformedJSONResponse := &Response{
 		Response: &http.Response{
-			Body: ioutil.NopCloser(strings.NewReader(`{"key": "value`)), // Missing closing brace
+			Body: io.NopCloser(strings.NewReader(`{"key": "value`)), // Missing closing brace
 		},
 	}
 	err = malformedJSONResponse.Unmarshal(&data)
@@ -1265,7 +1265,7 @@ func TestResponseMethods(t *testing.T) {
 	// Test Save()
 	saveResponse := &Response{
 		Response: &http.Response{
-			Body: ioutil.NopCloser(strings.NewReader("save-test")),
+			Body: io.NopCloser(strings.NewReader("save-test")),
 		},
 	}
 	var buf bytes.Buffer
@@ -1293,7 +1293,7 @@ func (rt *httpRoundingTripper) RoundTrip(req *http.Request) (*http.Response, err
 
 func TestPostJSONWithBytes(t *testing.T) {
 	server := NewMockServer().Handle("/json-bytes", func(w http.ResponseWriter, req *http.Request) {
-		body, _ := ioutil.ReadAll(req.Body)
+		body, _ := io.ReadAll(req.Body)
 		w.Write(body)
 	})
 	defer server.ServeBackground()()

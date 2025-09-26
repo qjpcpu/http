@@ -3,8 +3,7 @@ package http
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
-	syshttp "net/http"
+	"net/http"
 )
 
 type repeatableReader struct {
@@ -20,15 +19,15 @@ func (rr *repeatableReader) Close() error {
 	return rr.SeekStart()
 }
 
-func RepeatableReadResponse(res *syshttp.Response) ([]byte, error) {
+func RepeatableReadResponse(res *http.Response) ([]byte, error) {
 	if res == nil || res.Body == nil {
 		return nil, nil
 	}
 	if rr, ok := res.Body.(*repeatableReader); ok {
 		defer rr.Close()
-		return ioutil.ReadAll(res.Body)
+		return io.ReadAll(res.Body)
 	}
-	data, err := ioutil.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		res.Body.Close()
 		return nil, err
@@ -38,15 +37,15 @@ func RepeatableReadResponse(res *syshttp.Response) ([]byte, error) {
 	return data, nil
 }
 
-func RepeatableReadRequest(res *syshttp.Request) ([]byte, error) {
+func RepeatableReadRequest(res *http.Request) ([]byte, error) {
 	if res.Body == nil {
 		return nil, nil
 	}
 	if rr, ok := res.Body.(*repeatableReader); ok {
 		defer rr.Close()
-		return ioutil.ReadAll(res.Body)
+		return io.ReadAll(res.Body)
 	}
-	data, err := ioutil.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		res.Body.Close()
 		return nil, err
