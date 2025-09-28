@@ -30,7 +30,7 @@ func (r *Response) Result() (*http.Response, error) {
 	return r.Response, r.Err
 }
 
-func (r *Response) Unmarshal(obj interface{}) error {
+func (r *Response) Unmarshal(obj any) error {
 	ctx := r.ctx
 	if r.Err != nil {
 		log(ctx, "http response error %v", r.Err)
@@ -80,6 +80,9 @@ func (r *Response) Save(w io.Writer) error {
 		return nil
 	}
 	defer r.Response.Body.Close()
+	if w == nil {
+		w = io.Discard
+	}
 	_, err := io.Copy(w, r.Response.Body)
 	return err
 }
