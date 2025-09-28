@@ -11,12 +11,13 @@ This library enhances Go's standard `net/http` client with a fluent interface, r
 
 - **Middleware Architecture**: Easily add functionality like logging, retries, and auth to clients or individual requests.
 - **Fluent Interface**: Configure your client with a clean, chainable API.
-- **Automatic Retries**: Built-in support for exponential backoff and jitter to handle transient network issues.
+- **Automatic Retries**: Built-in support for linear jitter backoff to handle transient network issues.
 - **Request & Response Debugging**: Detailed logging of requests and responses for easy debugging.
 - **Effortless Mocking**: Mock server responses for reliable and fast unit tests.
 - **Connection Pooling & Keep-Alive**: High performance by default, with efficient connection reuse.
+- **Client Forking**: Efficiently create specialized child clients from a base template while sharing the underlying connection pool.
 - **Helper Methods**: Convenient methods for common tasks like `PostJSON`, `PostForm`, and `Download`.
-- **Context-Aware**: Full support for `context.Context` for cancellation and deadlines.
+- **Context-Aware**: Full support for `context.Context` for request cancellation and deadlines.
 
 ## Installation
 
@@ -41,12 +42,12 @@ func main() {
 	client := http.NewClient()
 	
 	// Make a GET request
-	res, err := client.Get(context.Background(), "https://httpbin.org/get").GetBody()
+	body, err := client.Get(context.Background(), "https://httpbin.org/get").GetBody()
 	if err != nil {
 		panic(err)
 	}
 	
-	fmt.Println(string(res))
+	fmt.Println(string(body))
 }
 ```
 
@@ -99,7 +100,7 @@ err := client.Get(
 	"https://httpbin.org/delay/3",
 	http.WithTimeout(2*time.Second),
 	http.WithHeader("X-Custom-Header", "per-request-value"),
-).Err
+).Error()
 
 if err != nil {
 	fmt.Println("Request failed as expected:", err)
@@ -207,7 +208,7 @@ func TestMyFunction(t *testing.T) {
 - `Do(ctx, method, url, body, ...Option) *Response`
 
 ### Response Handling
-- `response.Err error`
+- `response.Error() error`
 - `response.GetBody() ([]byte, error)`
 - `response.Unmarshal(interface{}) error`
 - `response.Save(io.Writer) error`
