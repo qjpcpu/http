@@ -100,6 +100,14 @@ func (r *Response) GetBody() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (r *Response) MustGetBody() []byte {
+	data, err := r.GetBody()
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 // Save reads the entire response body and writes it to the provided io.Writer.
 // If the writer is nil, the body is read and discarded.
 //
