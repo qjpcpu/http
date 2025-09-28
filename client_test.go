@@ -53,8 +53,8 @@ func TestSetMock(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, "http://ssssss")
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if val != 1 {
 		t.Fatalf("expected val to be 1, got %d", val)
@@ -90,8 +90,8 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, server.URLPrefix+"/hello")
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if val != 1 {
 		t.Fatalf("expected val to be 1, got %d", val)
@@ -115,8 +115,8 @@ func TestResponse(t *testing.T) {
 	if err := res1.Unmarshal(&res); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if res.A != 1 {
 		t.Fatalf("expected res.A to be 1, got %d", res.A)
@@ -150,8 +150,8 @@ func TestGet(t *testing.T) {
 	if err := res1.Unmarshal(&res); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if res.Args.A != "hello" {
 		t.Fatalf("expected res.Args.A to be 'hello', got %q", res.Args.A)
@@ -190,8 +190,8 @@ func TestDebug(t *testing.T) {
 		B: "HELLO",
 	}
 	res1 := client.PostJSON(nil, server.URLPrefix+"/echo", res)
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if err := res1.Unmarshal(&res); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
@@ -227,7 +227,7 @@ func TestDebugWithErr(t *testing.T) {
 		B: "HELLO",
 	}
 	res1 := client.PostJSON(nil, "http://wwws", res)
-	if res1.Err == nil {
+	if res1.Error() == nil {
 		t.Fatal("expected an error, but got nil")
 	}
 	out := string(stdout())
@@ -257,11 +257,11 @@ func TestRepeatableRead(t *testing.T) {
 		}
 	})
 
-	res1 := client.Get(nil, "http://sss")
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	res1, err := client.Get(nil, "http://sss").GetBody()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
-	if body := string(res1.MustGetBody()); body != "HELLO" {
+	if body := string(res1); body != "HELLO" {
 		t.Fatalf("expected body to be 'HELLO', got %q", body)
 	}
 }
@@ -297,8 +297,8 @@ func TestRepeatableReadRequest(t *testing.T) {
 	})
 
 	res1 := client.Post(nil, "http://sss", []byte(reqBody))
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 }
 
@@ -317,8 +317,8 @@ func TestGlobalHeader(t *testing.T) {
 	client.SetHeader("AA", "BB")
 
 	res1 := client.Get(nil, "http://sss")
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if hdl["aa"] != "BB" {
 		t.Fatalf("expected header 'aa' to be 'BB', got %q", hdl["aa"])
@@ -341,12 +341,12 @@ func TestOptionMiddleware(t *testing.T) {
 		}
 	}
 	res1 := client.Get(nil, "http://sss", WithMiddleware(mid))
-	if res1.Err != nil {
-		t.Fatalf("expected nil error on first call, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error on first call, got %v", res1.Error())
 	}
 	res1 = client.Get(nil, "http://sss")
-	if res1.Err != nil {
-		t.Fatalf("expected nil error on second call, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error on second call, got %v", res1.Error())
 	}
 	/* execute once */
 	if val != 1 {
@@ -398,8 +398,8 @@ func TestBeforeHook(t *testing.T) {
 	})
 	var val int
 	res1 := client.Get(nil, "http://sss", WithBeforeHook(func(*http.Request) { val++ }))
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if val != 1 {
 		t.Fatalf("expected hook to be called once, got %d", val)
@@ -416,8 +416,8 @@ func TestAfterHook(t *testing.T) {
 	})
 	var val int
 	res1 := client.Get(nil, "http://sss", WithAfterHook(func(*http.Response) { val++ }))
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if val != 1 {
 		t.Fatalf("expected hook to be called once, got %d", val)
@@ -438,11 +438,11 @@ func TestTimeout(t *testing.T) {
 	client := NewClient()
 	client.SetTimeout(1 * time.Millisecond)
 	res := client.Get(nil, server.URLPrefix+"/delay")
-	if res.Err == nil {
+	if res.Error() == nil {
 		t.Fatal("expected an error, but got nil")
 	}
-	if !strings.Contains(res.Err.Error(), "context deadline exceeded") {
-		t.Fatalf("expected error to contain 'context deadline exceeded', got %q", res.Err.Error())
+	if !strings.Contains(res.Error().Error(), "context deadline exceeded") {
+		t.Fatalf("expected error to contain 'context deadline exceeded', got %q", res.Error().Error())
 	}
 
 	close(stopChan)
@@ -461,7 +461,7 @@ func TestTimeoutOverwrite(t *testing.T) {
 
 	client := NewClient()
 	client.SetTimeout(100 * time.Hour)
-	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Millisecond)).Err
+	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Millisecond)).Error()
 	if err == nil {
 		t.Fatal("expected an error, but got nil")
 	}
@@ -485,7 +485,7 @@ func TestTimeoutOverwrite2(t *testing.T) {
 	client := NewClient()
 	client.SetTimeout(1 * time.Millisecond)
 	/* should not timeout */
-	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Hour)).Err
+	err := client.Get(nil, server.URLPrefix+"/delay", WithTimeout(time.Hour)).Error()
 	if err != nil {
 		t.Fatalf("expected no error, but got %v", err)
 	}
@@ -519,11 +519,11 @@ func TestMockServer(t *testing.T) {
 	defer server.ServeBackground()()
 	client := NewClient()
 
-	res := client.Get(nil, server.URLPrefix+"/hello")
-	if res.Err != nil {
-		t.Fatalf("expected nil error, got %v", res.Err)
+	res, err := client.Get(nil, server.URLPrefix+"/hello").GetBody()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
-	if bodyStr := string(res.MustGetBody()); bodyStr != body {
+	if bodyStr := string(res); bodyStr != body {
 		t.Fatalf("expected body %q, got %q", body, bodyStr)
 	}
 }
@@ -541,7 +541,7 @@ func TestRetryCheckResponse(t *testing.T) {
 	defer server.ServeBackground()()
 	client := NewClient()
 
-	res := client.Get(nil, server.URLPrefix+"/hello", WithRetry(RetryOption{
+	res, err := client.Get(nil, server.URLPrefix+"/hello", WithRetry(RetryOption{
 		RetryMax:     3,
 		RetryWaitMin: 1 * time.Millisecond,
 		RetryWaitMax: 3 * time.Millisecond,
@@ -549,14 +549,14 @@ func TestRetryCheckResponse(t *testing.T) {
 			data, _ := RepeatableReadResponse(res)
 			return string(data) == "FAIL"
 		},
-	}))
-	if res.Err != nil {
-		t.Fatalf("expected nil error, got %v", res.Err)
+	})).GetBody()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	if val != 3 {
 		t.Fatalf("expected 3 attempts, got %d", val)
 	}
-	if body := string(res.MustGetBody()); body != "OK" {
+	if body := string(res); body != "OK" {
 		t.Fatalf("expected final body to be 'OK', got %q", body)
 	}
 }
@@ -589,7 +589,7 @@ func TestRetryModifyRequest(t *testing.T) {
 	defer server.ServeBackground()()
 	client := NewClient()
 
-	res := client.Get(nil, server.URLPrefix+"/hello?args=first", WithRetry(RetryOption{
+	res, err := client.Get(nil, server.URLPrefix+"/hello?args=first", WithRetry(RetryOption{
 		RetryMax:     3,
 		RetryWaitMin: 1 * time.Millisecond,
 		RetryWaitMax: 3 * time.Millisecond,
@@ -606,14 +606,14 @@ func TestRetryModifyRequest(t *testing.T) {
 			})
 			return next(req)
 		}
-	}))
-	if res.Err != nil {
-		t.Fatalf("expected nil error, got %v", res.Err)
+	})).GetBody()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	if val != 3 {
 		t.Fatalf("expected 3 attempts, got %d", val)
 	}
-	if body := string(res.MustGetBody()); body != "OK" {
+	if body := string(res); body != "OK" {
 		t.Fatalf("expected final body to be 'OK', got %q", body)
 	}
 }
@@ -647,7 +647,7 @@ func TestRetryModifyRequestByPrevMiddleware(t *testing.T) {
 		}
 	})
 
-	res := client.Get(nil, server.URLPrefix+"/hello?args=first", WithRetry(RetryOption{
+	res, err := client.Get(nil, server.URLPrefix+"/hello?args=first", WithRetry(RetryOption{
 		RetryMax:     3,
 		RetryWaitMin: 1 * time.Millisecond,
 		RetryWaitMax: 3 * time.Millisecond,
@@ -666,14 +666,14 @@ func TestRetryModifyRequestByPrevMiddleware(t *testing.T) {
 			})
 			return next(req)
 		}
-	}))
-	if res.Err != nil {
-		t.Fatalf("expected nil error, got %v", res.Err)
+	})).GetBody()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	if val != 3 {
 		t.Fatalf("expected 3 attempts, got %d", val)
 	}
-	if body := string(res.MustGetBody()); body != "OK" {
+	if body := string(res); body != "OK" {
 		t.Fatalf("expected final body to be 'OK', got %q", body)
 	}
 }
@@ -691,7 +691,7 @@ func TestOverwriteRetry(t *testing.T) {
 	res := client.Get(nil, "http://hello", WithRetry(RetryOption{
 		RetryMax: 0,
 	}))
-	if res.Err == nil {
+	if res.Error() == nil {
 		t.Fatal("expected an error, but got nil")
 	}
 	if val != 1 {
@@ -712,16 +712,13 @@ func TestSetHeader(t *testing.T) {
 
 	client.SetHeader("AA", "BB")
 
-	res1 := client.Get(nil, server.URLPrefix+"/header", WithHeaders(map[string]string{
+	headers := make(http.Header)
+	err := client.Get(nil, server.URLPrefix+"/header", WithHeaders(map[string]string{
 		"c":    "eS",
 		"host": "sssssss",
-	}))
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
-	}
-	headers := make(http.Header)
-	if err := res1.Unmarshal(&headers); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
+	})).Unmarshal(&headers)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	if headers.Get("AA") != "BB" {
 		t.Errorf("expected header AA to be 'BB', got %q", headers.Get("AA"))
@@ -748,11 +745,11 @@ func TestContextCancel(t *testing.T) {
 	cancel() // Cancel the context before the request
 
 	res1 := client.Get(ctx, server.URLPrefix+"/header")
-	if res1.Err == nil {
+	if res1.Error() == nil {
 		t.Fatal("expected an error due to canceled context, but got nil")
 	}
-	if !strings.Contains(res1.Err.Error(), "context canceled") {
-		t.Errorf("expected error to be 'context canceled', got %q", res1.Err.Error())
+	if !strings.Contains(res1.Error().Error(), "context canceled") {
+		t.Errorf("expected error to be 'context canceled', got %q", res1.Error().Error())
 	}
 }
 
@@ -782,20 +779,20 @@ func TestStatusCode(t *testing.T) {
 	defer server.ServeBackground()()
 	client := NewClient().AddMiddleware(MiddlewareSetAllowedStatusCode(http.StatusOK))
 	res1 := client.Get(nil, server.URLPrefix+"/code")
-	if res1.Err == nil {
+	if res1.Error() == nil {
 		t.Fatal("expected an error for disallowed status code, but got nil")
 	}
-	if !strings.Contains(res1.Err.Error(), `500 Internal Server Error BODY`) {
-		t.Errorf("error message mismatch, got: %q", res1.Err.Error())
+	if !strings.Contains(res1.Error().Error(), `500 Internal Server Error BODY`) {
+		t.Errorf("error message mismatch, got: %q", res1.Error().Error())
 	}
 
 	client = NewClient().AddMiddleware(MiddlewareSetBlockedStatusCode(http.StatusInternalServerError))
 	res1 = client.Get(nil, server.URLPrefix+"/code")
-	if res1.Err == nil {
+	if res1.Error() == nil {
 		t.Fatal("expected an error for blocked status code, but got nil")
 	}
-	if !strings.Contains(res1.Err.Error(), `500 Internal Server Error BODY`) {
-		t.Errorf("error message mismatch, got: %q", res1.Err.Error())
+	if !strings.Contains(res1.Error().Error(), `500 Internal Server Error BODY`) {
+		t.Errorf("error message mismatch, got: %q", res1.Error().Error())
 	}
 }
 
@@ -824,8 +821,8 @@ func TestDropQuery(t *testing.T) {
 	if err := res1.Unmarshal(&res); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if res.Args.B != "" {
 		t.Fatalf("expected query param 'b' to be dropped, but got value %q", res.Args.B)
@@ -915,8 +912,8 @@ func TestMiddlewareSequence(t *testing.T) {
 	})
 
 	res1 := client.Get(nil, server.URLPrefix+"/hello", opt0, opt1, opt2, opt3)
-	if res1.Err != nil {
-		t.Fatalf("expected nil error, got %v", res1.Err)
+	if res1.Error() != nil {
+		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
 	if val != 1 {
 		t.Fatalf("expected val to be 1, got %d", val)
@@ -1000,14 +997,9 @@ func TestDoRequest(t *testing.T) {
 
 	client := NewClient()
 	req, _ := http.NewRequest("GET", server.URLPrefix+"/dorequest", nil)
-	res := client.DoRequest(req)
-
-	if res.Err != nil {
-		t.Fatalf("DoRequest failed: %v", res.Err)
-	}
-	body, err := res.GetBody()
+	body, err := client.DoRequest(req).GetBody()
 	if err != nil {
-		t.Fatalf("Failed to get body: %v", err)
+		t.Fatalf("DoRequest failed: %v", err)
 	}
 	if string(body) != "dorequest-ok" {
 		t.Errorf("Expected body 'dorequest-ok', got %q", string(body))
@@ -1036,11 +1028,10 @@ func TestPostForm(t *testing.T) {
 		"user": "tester",
 		"id":   123,
 	}
-	res := client.PostForm(context.Background(), server.URLPrefix+"/form", formData)
-	if res.Err != nil {
-		t.Fatalf("PostForm failed: %v", res.Err)
+	body, err := client.PostForm(context.Background(), server.URLPrefix+"/form", formData).GetBody()
+	if err != nil {
+		t.Fatalf("PostForm failed: %v", err)
 	}
-	body, _ := res.GetBody()
 	if string(body) != "form-ok" {
 		t.Errorf("Expected 'form-ok', got %q", string(body))
 	}
@@ -1103,18 +1094,18 @@ func TestPostJSONTypes(t *testing.T) {
 	// Test with io.Reader error
 	errReader := &errorReader{}
 	resErrReader := client.PostJSON(context.Background(), server.URLPrefix+"/json", errReader)
-	if resErrReader.Err == nil {
+	if resErrReader.Error() == nil {
 		t.Error("Expected an error when reading from errorReader, got nil")
 	}
 
 	// Test with JSON marshal error
 	invalidJSON := make(chan int)
 	resInvalid := client.PostJSON(context.Background(), server.URLPrefix+"/json", invalidJSON)
-	if resInvalid.Err == nil {
+	if resInvalid.Error() == nil {
 		t.Error("Expected an error when marshaling invalid JSON, got nil")
 	}
-	if _, ok := resInvalid.Err.(*json.UnsupportedTypeError); !ok {
-		t.Errorf("Expected json.UnsupportedTypeError, got %T", resInvalid.Err)
+	if _, ok := resInvalid.Error().(*json.UnsupportedTypeError); !ok {
+		t.Errorf("Expected json.UnsupportedTypeError, got %T", resInvalid.Error())
 	}
 }
 
@@ -1137,19 +1128,18 @@ func TestURLRewriter(t *testing.T) {
 	client := NewClient()
 	rewrittenURL := strings.Replace(server.URLPrefix, "http://", "testproto://", 1) + "/rewritten"
 
-	res := client.Get(context.Background(), rewrittenURL)
-	if res.Err != nil {
-		t.Fatalf("URL rewriter test failed: %v", res.Err)
+	body, err := client.Get(context.Background(), rewrittenURL).GetBody()
+	if err != nil {
+		t.Fatalf("URL rewriter test failed: %v", err)
 	}
-	body, _ := res.GetBody()
 	if string(body) != "rewritten-ok" {
 		t.Errorf("Expected 'rewritten-ok', got %q", string(body))
 	}
 
 	// Test no-op
 	resNoOp := client.Get(context.Background(), server.URLPrefix+"/rewritten")
-	if resNoOp.Err != nil {
-		t.Fatalf("URL rewriter no-op test failed: %v", resNoOp.Err)
+	if resNoOp.Error() != nil {
+		t.Fatalf("URL rewriter no-op test failed: %v", resNoOp.Error())
 	}
 }
 
@@ -1177,8 +1167,8 @@ func TestSetRetry(t *testing.T) {
 
 	res := client.Get(context.Background(), "http://test-set-retry")
 
-	if res.Err != nil {
-		t.Fatalf("Expected request to succeed after retries, but got error: %v", res.Err)
+	if res.Error() != nil {
+		t.Fatalf("Expected request to succeed after retries, but got error: %v", res.Error())
 	}
 	if attemptCount != 3 {
 		t.Fatalf("Expected 3 attempts (1 initial + 2 retries), but got %d", attemptCount)
@@ -1201,8 +1191,8 @@ func TestWithDialer(t *testing.T) {
 
 	res := client.Get(context.Background(), server.URLPrefix+"/dialer")
 
-	if res.Err != nil {
-		t.Fatalf("Request with custom dialer failed: %v", res.Err)
+	if res.Error() != nil {
+		t.Fatalf("Request with custom dialer failed: %v", res.Error())
 	}
 
 	if !dialerCalled {
@@ -1215,20 +1205,20 @@ func TestDoWithInvalidURL(t *testing.T) {
 	// A URL with a control character is invalid
 	invalidURL := "http://invalid-url\x7f.com"
 	res := client.Get(context.Background(), invalidURL)
-	if res.Err == nil {
+	if res.Error() == nil {
 		t.Fatal("Expected an error for invalid URL, but got nil")
 	}
-	if !strings.Contains(res.Err.Error(), "invalid control character") {
-		t.Errorf("Expected error to be about 'invalid control character', got: %v", res.Err)
+	if !strings.Contains(res.Error().Error(), "invalid control character") {
+		t.Errorf("Expected error to be about 'invalid control character', got: %v", res.Error())
 	}
 }
 
 func TestResponseMethods(t *testing.T) {
 	// Test Unmarshal with pre-existing error
-	errResponse := &Response{Err: errors.New("initial error")}
+	errResponse := buildResponse(context.Background(), nil, errors.New("initial error"))
 	var data interface{}
 	err := errResponse.Unmarshal(&data)
-	if err == nil || err.Error() != "initial error" {
+	if err == nil || !strings.Contains(err.Error(), "initial error") {
 		t.Errorf("Expected Unmarshal to return the initial error, got: %v", err)
 	}
 
@@ -1241,25 +1231,6 @@ func TestResponseMethods(t *testing.T) {
 	err = malformedJSONResponse.Unmarshal(&data)
 	if err == nil {
 		t.Fatal("Expected Unmarshal to fail on malformed JSON, but it succeeded")
-	}
-
-	// Test MustGetBody panic
-	func() {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected MustGetBody to panic on a response with an error, but it did not")
-			}
-		}()
-		errResponse.MustGetBody()
-	}()
-
-	// Test Result()
-	res, err := errResponse.Result()
-	if res != errResponse.Response {
-		t.Error("Result() did not return the correct response object")
-	}
-	if err != errResponse.Err {
-		t.Error("Result() did not return the correct error")
 	}
 
 	// Test Save()
@@ -1312,8 +1283,8 @@ func TestStatusCodeCheckEdgeCases(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusNotFound}, nil
 	})
 	res := client.Get(context.Background(), "/test")
-	if res.Err != nil {
-		t.Fatalf("Expected no error when status code checkers are empty, got %v", res.Err)
+	if res.Error() != nil {
+		t.Fatalf("Expected no error when status code checkers are empty, got %v", res.Error())
 	}
 }
 

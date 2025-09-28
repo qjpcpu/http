@@ -185,8 +185,7 @@ func (client *clientImpl) rewriteURL(ctx context.Context, urlstr string) string 
 
 // Download is a convenience method for GET requests that writes the response body directly to an io.Writer.
 func (client *clientImpl) Download(ctx context.Context, uri string, w io.Writer, opts ...Option) error {
-	opts = append(opts, WithBody(w))
-	return client.Do(ctx, "GET", uri, nil, opts...).Err
+	return client.Do(ctx, "GET", uri, nil, opts...).Save(w)
 }
 
 // Get is a convenience method for making a GET request.

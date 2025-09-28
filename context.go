@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"time"
 )
@@ -14,7 +13,6 @@ const (
 )
 
 type gValue struct {
-	BodySaver   io.Writer
 	Timeout     time.Duration
 	Mock        Endpoint
 	Debugger    HTTPLogger

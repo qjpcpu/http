@@ -34,9 +34,6 @@ func middlewareContext(next Endpoint) Endpoint {
 			next = middlewareSetMock(gv.Mock)(next)
 		}
 
-		/* download body */
-		next = middlewareSaveResponse(gv.BodySaver)(next)
-
 		/* log */
 		if gv.Debugger != nil {
 			next = middlewareDebug(gv.Debugger)(next)
@@ -53,24 +50,6 @@ func middlewareContext(next Endpoint) Endpoint {
 func middlewareSetMock(fn func(*http.Request) (*http.Response, error)) Middleware {
 	return func(next Endpoint) Endpoint {
 		return fn
-	}
-}
-
-func middlewareSaveResponse(w io.Writer) Middleware {
-	return func(next Endpoint) Endpoint {
-		if w == nil {
-			return next
-		}
-		return func(req *http.Request) (*http.Response, error) {
-			res, err := next(req)
-			if res != nil && res.Body != nil {
-				defer res.Body.Close()
-				if _, err := io.Copy(w, res.Body); err != nil {
-					return nil, err
-				}
-			}
-			return res, err
-		}
 	}
 }
 
@@ -247,7 +226,7 @@ func middlewareRetry(retryOpt *RetryOption) Middleware {
 
 func drainBody(body io.ReadCloser) error {
 	defer body.Close()
-	_, err := io.Copy(io.Discard, io.LimitReader(body, 4096))
+	_, err := io.Copy(io.Discard, body)
 	return err
 }
 

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -53,15 +52,6 @@ func WithRetry(opt RetryOption) Option {
 	return WithMiddleware(func(next Endpoint) Endpoint {
 		return func(req *http.Request) (*http.Response, error) {
 			getValue(req).RetryOption = &opt
-			return next(req)
-		}
-	})
-}
-
-func WithBody(w io.Writer) Option {
-	return WithMiddleware(func(next Endpoint) Endpoint {
-		return func(req *http.Request) (*http.Response, error) {
-			getValue(req).BodySaver = w
 			return next(req)
 		}
 	})
