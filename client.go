@@ -15,12 +15,13 @@ import (
 	"time"
 )
 
-// NewClient creates a new HTTP client with a default pooled transport and a 5-second timeout.
+const defaultConnectTimeout = 15 * time.Second
+
+// NewClient creates a new HTTP client with a default pooled transport and a 15-second timeout.
 func NewClient() Client {
 	cli := &clientImpl{
 		transport: DefaultPooledTransport(),
 	}
-	cli.SetTimeout(5 * time.Second)
 	return cli
 }
 
@@ -255,16 +256,34 @@ func (c *clientImpl) PostJSON(ctx context.Context, urlstr string, data any, opts
 // 5. The actual `client.Client.Do` call.
 func (client *clientImpl) makeFinalHandler(extraMiddlewares ...Middleware) Endpoint {
 	next := func(req *http.Request) (*http.Response, error) {
+		// The final step in the middleware chain is to execute the request.
+		//
+		// **Design Rationale: Why use a pooled http.Client instead of the shared http.Transport directly?**
+		//
+		// 1. **Robust Context Handling**: The `http.Client.Do` method provides crucial logic for handling
+		//    `context` cancellation (e.g., timeouts). If a request's context is canceled while the
+		//    request is in-flight, `client.Do` ensures that the underlying `http.Transport` can still
+		//    read and discard the response body in the background. This "draining" is essential to
+		//    make the TCP connection "clean" and safely return it to the connection pool for reuse.
+		//
+		// 2. **Preventing Connection Leaks**: If we were to call `transport.RoundTrip(req)` directly, and
+		//    the context was canceled, our code would receive an error and move on. However, the underlying
+		//    TCP connection would be left in an indeterminate state, waiting for a response body that no
+		//    longer has a consumer. This leads to connection leaks and resource exhaustion.
+		//
+		// 3. **Performance and Safety**: By using a `sync.Pool` to reuse `http.Client` objects, we reduce
+		//    allocations and GC pressure. We configure a temporary client for each request with a specific
+		//    timeout and the shared transport. This pattern gives us the best of both worlds: the safety
+		//    and robustness of `http.Client` with the performance of a shared `http.Transport` and its
+		//    connection pool.
+		timeout := defaultConnectTimeout // Fallback to default connect timeout
 		gv := getValue(req)
-		// If a timeout is set in the context, create a shallow copy of the client
-		// and set the timeout for this specific request. This is the standard Go way
-		// to handle per-request timeouts while still reusing the underlying transport and connection pool.
 		if gv != nil && gv.Timeout > 0 {
-			c := poolGetClient(client.transport, gv.Timeout)
-			defer poolPutClient(c)
-			return c.Do(req)
+			timeout = gv.Timeout
 		}
-		return client.transport.RoundTrip(req)
+		c := poolGetClient(client.transport, timeout)
+		defer poolPutClient(c)
+		return c.Do(req)
 	}
 
 	next = middlewareContext(next)
@@ -321,7 +340,7 @@ func DefaultPooledTransport() *http.Transport {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
+			Timeout:   defaultConnectTimeout,
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
