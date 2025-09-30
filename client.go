@@ -257,25 +257,32 @@ func (c *clientImpl) PostJSON(ctx context.Context, urlstr string, data any, opts
 func (client *clientImpl) makeFinalHandler(extraMiddlewares ...Middleware) Endpoint {
 	next := func(req *http.Request) (*http.Response, error) {
 		// The final step in the middleware chain is to execute the request.
+		// **Design Rationale: Why use a pooled http.Client with a Timeout field?**
 		//
-		// **Design Rationale: Why use a pooled http.Client instead of the shared http.Transport directly?**
+		// This design is crucial for ensuring that request timeouts and TCP connection reuse (Keep-Alive)
+		// work together correctly and robustly.
 		//
-		// 1. **Robust Context Handling**: The `http.Client.Do` method provides crucial logic for handling
-		//    `context` cancellation (e.g., timeouts). If a request's context is canceled while the
-		//    request is in-flight, `client.Do` ensures that the underlying `http.Transport` can still
-		//    read and discard the response body in the background. This "draining" is essential to
-		//    make the TCP connection "clean" and safely return it to the connection pool for reuse.
+		// 1. **Leveraging `setRequestCancel`**: When an `http.Client` has a non-zero `Timeout`, its `Do`
+		//    method calls an internal function `setRequestCancel`. This function sets up a timer. If the
+		//    request takes too long, the timer triggers `transport.CancelRequest(req)`. This is a specific
+		//    cancellation signal that the `http.Transport` is designed to understand perfectly.
 		//
-		// 2. **Preventing Connection Leaks**: If we were to call `transport.RoundTrip(req)` directly, and
-		//    the context was canceled, our code would receive an error and move on. However, the underlying
-		//    TCP connection would be left in an indeterminate state, waiting for a response body that no
-		//    longer has a consumer. This leads to connection leaks and resource exhaustion.
+		// 2. **Guaranteed Connection Cleanup**: Upon receiving a `CancelRequest` signal, the `Transport`
+		//    knows it's a client-initiated cancellation. It will then safely interrupt the request while
+		//    ensuring the underlying TCP connection is properly "drained" (reading and discarding any
+		//    remaining response body) before returning it to the connection pool. This guarantees
+		//    the connection is clean and ready for reuse.
 		//
-		// 3. **Performance and Safety**: By using a `sync.Pool` to reuse `http.Client` objects, we reduce
-		//    allocations and GC pressure. We configure a temporary client for each request with a specific
-		//    timeout and the shared transport. This pattern gives us the best of both worlds: the safety
-		//    and robustness of `http.Client` with the performance of a shared `http.Transport` and its
-		//    connection pool.
+		// 3. **Avoiding Ambiguity**: In contrast, relying solely on a request's `context` for timeouts
+		//    can be less reliable in some edge cases. When only the `context` is canceled, the `Transport`
+		//    sees a more generic cancellation signal. Under certain network conditions or with non-standard
+		//    server behaviors, the `Transport` might conservatively decide to close the connection instead
+		//    of attempting to reuse it, to avoid state corruption.
+		//
+		// 4. **Best Practice**: Therefore, creating a temporary `http.Client` for each request and setting
+		//    its `Timeout` field is the most robust way to handle per-request timeouts in Go. It ensures
+		//    maximum connection reuse and prevents resource leaks, which is why this library adopts this
+		//    pattern using a `sync.Pool` for efficiency.
 		timeout := defaultConnectTimeout // Fallback to default connect timeout
 		gv := getValue(req)
 		if gv != nil && gv.Timeout > 0 {
