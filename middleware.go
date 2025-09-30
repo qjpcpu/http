@@ -190,19 +190,11 @@ func middlewareRetry(retryOpt *RetryOption) Middleware {
 	}
 	return func(next Endpoint) Endpoint {
 		return func(req *http.Request) (res *http.Response, err error) {
-			retryHookList := getValue(req).RetryHooks
 			for i := 0; i < retryOpt.RetryMax+1; i++ {
 				/* save request body */
 				if req.Body != nil {
 					if _, err := RepeatableReadRequest(req); err != nil {
 						return nil, err
-					}
-				}
-
-				/* do retry hook */
-				if i > 0 {
-					for _, hook := range retryHookList {
-						hook(req, i)
 					}
 				}
 

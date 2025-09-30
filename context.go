@@ -17,7 +17,6 @@ type gValue struct {
 	Mock        Endpoint
 	Debugger    HTTPLogger
 	RetryOption *RetryOption
-	RetryHooks  []RetryHook
 }
 
 func getValue(req *http.Request) *gValue {
@@ -44,8 +43,4 @@ func setValue(req *http.Request, v *gValue) *http.Request {
 		req = req.WithContext(ctx)
 	}
 	return req
-}
-
-func (v *gValue) AddRetryHook(hook RetryHook) {
-	v.RetryHooks = append(v.RetryHooks, hook)
 }

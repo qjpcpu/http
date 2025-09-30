@@ -9,18 +9,6 @@ import (
 	"net/http"
 )
 
-type Request struct {
-	*http.Request
-}
-
-func FromRequest(req *http.Request) *Request {
-	return &Request{Request: req}
-}
-
-func (req *Request) AddRetryHook(hook RetryHook) {
-	getValue(req.Request).AddRetryHook(hook)
-}
-
 type Response struct {
 	*http.Response
 	err  error
