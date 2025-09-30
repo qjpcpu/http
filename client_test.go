@@ -296,7 +296,7 @@ func TestRepeatableReadRequest(t *testing.T) {
 		}
 	})
 
-	res1 := client.Post(nil, "http://sss", []byte(reqBody))
+	res1 := client.Post(nil, "http://sss", strings.NewReader(reqBody))
 	if res1.Error() != nil {
 		t.Fatalf("expected nil error, got %v", res1.Error())
 	}
@@ -870,6 +870,26 @@ func TestClientMethods(t *testing.T) {
 	if afterHookVal != 1 {
 		t.Errorf("Client-level after hook was not called. Got %d, want 1", afterHookVal)
 	}
+
+	// Test Fork without middlewares
+	forkVal = 0
+	clientWithHook := NewClient().AddBeforeHook(func(r *http.Request) {
+		forkVal++
+	})
+	clientWithHook.SetMock(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	forked := clientWithHook.Fork(false)
+	forked.Get(context.Background(), "/test")
+	if forkVal != 0 {
+		t.Errorf("Expected middleware to NOT run on forked client (with middlewares=false), forkVal = %d", forkVal)
+	}
+
+	clientWithHook.Get(context.Background(), "/test")
+	if forkVal != 1 {
+		t.Errorf("Original client middleware should still work, forkVal = %d", forkVal)
+	}
 }
 
 func TestDoRequest(t *testing.T) {
@@ -946,6 +966,93 @@ func TestDeleteAndPut(t *testing.T) {
 	}
 }
 
+func TestResponse_MustGetBody_Panic(t *testing.T) {
+	res := &Response{
+		err: errors.New("test error"),
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("MustGetBody should have panicked but did not")
+		} else {
+			if err, ok := r.(error); !ok || err.Error() != "test error" {
+				t.Errorf("MustGetBody panicked with wrong error. got %v, want 'test error'", r)
+			}
+		}
+	}()
+
+	res.MustGetBody()
+}
+
+func TestClient_PostPutDeleteWithBody(t *testing.T) {
+	const requestBody = "request body content"
+	const postResponse = "post-ok"
+	const putResponse = "put-ok"
+	const deleteResponse = "delete-ok"
+
+	server := NewMockServer().
+		Handle("/post", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodPost {
+				t.Errorf("Expected POST method, got %s", req.Method)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Errorf("Error reading request body: %v", err)
+			}
+			if string(body) != requestBody {
+				t.Errorf("Expected body %q, got %q", requestBody, string(body))
+			}
+			w.Write([]byte(postResponse))
+		}).
+		Handle("/put", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodPut {
+				t.Errorf("Expected PUT method, got %s", req.Method)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Errorf("Error reading request body: %v", err)
+			}
+			if string(body) != requestBody {
+				t.Errorf("Expected body %q, got %q", requestBody, string(body))
+			}
+			w.Write([]byte(putResponse))
+		}).
+		Handle("/delete", func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodDelete {
+				t.Errorf("Expected DELETE method, got %s", req.Method)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Errorf("Error reading request body: %v", err)
+			}
+			if string(body) != requestBody {
+				t.Errorf("Expected body %q, got %q", requestBody, string(body))
+			}
+			w.Write([]byte(deleteResponse))
+		})
+	defer server.ServeBackground()()
+
+	client := NewClient()
+
+	// Test Post
+	resPost, _ := client.Post(context.Background(), server.URLPrefix+"/post", strings.NewReader(requestBody)).GetBody()
+	if string(resPost) != postResponse {
+		t.Errorf("Expected response %q for POST, got %q", postResponse, string(resPost))
+	}
+
+	// Test Put
+	resPut, _ := client.Put(context.Background(), server.URLPrefix+"/put", strings.NewReader(requestBody)).GetBody()
+	if string(resPut) != putResponse {
+		t.Errorf("Expected response %q for PUT, got %q", putResponse, string(resPut))
+	}
+
+	// Test Delete
+	resDelete, _ := client.Delete(context.Background(), server.URLPrefix+"/delete", strings.NewReader(requestBody)).GetBody()
+	if string(resDelete) != deleteResponse {
+		t.Errorf("Expected response %q for DELETE, got %q", deleteResponse, string(resDelete))
+	}
+}
+
 func TestPostJSONTypes(t *testing.T) {
 	server := NewMockServer().Handle("/json", func(w http.ResponseWriter, req *http.Request) {
 		body, _ := io.ReadAll(req.Body)
@@ -990,12 +1097,47 @@ func TestPostJSONTypes(t *testing.T) {
 	if _, ok := resInvalid.Error().(*json.UnsupportedTypeError); !ok {
 		t.Errorf("Expected json.UnsupportedTypeError, got %T", resInvalid.Error())
 	}
+
+	// Test with json.RawMessage
+	rawJSON := json.RawMessage(`{"type":"raw"}`)
+	resRaw := client.PostJSON(context.Background(), server.URLPrefix+"/json", rawJSON)
+	if body, err := resRaw.GetBody(); err != nil {
+		t.Errorf("PostJSON with json.RawMessage failed with error: %v", err)
+	} else if string(body) != string(rawJSON) {
+		t.Errorf("PostJSON with json.RawMessage failed, got %q, want %q", string(body), string(rawJSON))
+	}
+
+	// Test HandleResult idempotency
+	resStr.GetBody() // First call
+	body, err := resStr.GetBody()
+	if err != nil || len(body) > 0 {
+		t.Errorf("Expected second call to GetBody to return empty and no error, got body %q and err %v", body, err)
+	}
 }
 
 type errorReader struct{}
 
 func (e *errorReader) Read(p []byte) (n int, err error) {
 	return 0, errors.New("read error")
+}
+
+func TestRepeatableReadNil(t *testing.T) {
+	// Test RepeatableReadResponse with nil response
+	body, err := RepeatableReadResponse(nil)
+	if body != nil || err != nil {
+		t.Errorf("RepeatableReadResponse(nil) should return nil, nil, got %q, %v", body, err)
+	}
+
+	// Test RepeatableReadResponse with nil body
+	res := &http.Response{Body: nil}
+	body, err = RepeatableReadResponse(res)
+	if body != nil || err != nil {
+		t.Errorf("RepeatableReadResponse with nil body should return nil, nil, got %q, %v", body, err)
+	}
+
+	// Test RepeatableReadRequest with nil body
+	req, _ := http.NewRequest("GET", "/", nil)
+	RepeatableReadRequest(req) // Should not panic
 }
 
 func TestURLRewriter(t *testing.T) {
@@ -1194,6 +1336,23 @@ func TestTCPKeepAlive(t *testing.T) {
 	}
 	if server.Connections() != 1 {
 		t.Fatalf("keep alive fail %d", server.Connections())
+	}
+}
+
+func TestMiddlewareDebugDisabled(t *testing.T) {
+	var logCount int
+	disabledLogger := BuildLogger(func() bool { return false }, func(ctx context.Context, info *TransportInfo) {
+		logCount++
+	})
+
+	client := NewClient().SetDebug(disabledLogger)
+	client.SetMock(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	client.Get(context.Background(), "/test")
+	if logCount != 0 {
+		t.Errorf("Logger was called %d times, expected 0 for disabled logger", logCount)
 	}
 }
 

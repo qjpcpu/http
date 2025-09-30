@@ -194,19 +194,19 @@ func (client *clientImpl) Get(ctx context.Context, uri string, opts ...Option) *
 	return client.Do(ctx, "GET", uri, nil, opts...)
 }
 
-// Post is a convenience method for making a POST request with a byte slice body.
-func (client *clientImpl) Post(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response {
-	return client.Do(ctx, "POST", urlstr, bytes.NewBuffer(data), opts...)
+// Post is a convenience method for making a POST request with an io.Reader body.
+func (client *clientImpl) Post(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response {
+	return client.Do(ctx, "POST", urlstr, data, opts...)
 }
 
-// Delete is a convenience method for making a DELETE request.
-func (client *clientImpl) Delete(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response {
-	return client.Do(ctx, "DELETE", urlstr, bytes.NewBuffer(data), opts...)
+// Delete is a convenience method for making a DELETE request with an io.Reader body.
+func (client *clientImpl) Delete(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response {
+	return client.Do(ctx, "DELETE", urlstr, data, opts...)
 }
 
-// Put is a convenience method for making a PUT request.
-func (client *clientImpl) Put(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response {
-	return client.Do(ctx, "PUT", urlstr, bytes.NewBuffer(data), opts...)
+// Put is a convenience method for making a PUT request with an io.Reader body.
+func (client *clientImpl) Put(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response {
+	return client.Do(ctx, "PUT", urlstr, data, opts...)
 }
 
 // PostForm is a convenience method for making a POST request with "application/x-www-form-urlencoded" data.
@@ -217,31 +217,30 @@ func (client *clientImpl) PostForm(ctx context.Context, urlstr string, data map[
 		values.Set(k, fmt.Sprint(v))
 	}
 	opts = append([]Option{WithHeader("Content-Type", "application/x-www-form-urlencoded")}, opts...)
-	return client.Post(ctx, urlstr, []byte(values.Encode()), opts...)
+	return client.Post(ctx, urlstr, strings.NewReader(values.Encode()), opts...)
 }
 
 // PostJSON is a convenience method for making a POST request with a JSON body.
 // It handles various data types (string, []byte, io.Reader, or any marshallable struct) and sets the Content-Type header.
 func (c *clientImpl) PostJSON(ctx context.Context, urlstr string, data any, opts ...Option) *Response {
-	var payload []byte
-	var err error
+	var payload io.Reader
 	switch d := data.(type) {
 	case string:
-		payload = []byte(d)
+		payload = strings.NewReader(d)
 	case []byte:
-		payload = d
+		payload = bytes.NewBuffer(d)
+	case json.RawMessage:
+		payload = bytes.NewBuffer(d)
 	case nil:
 		// do nothing
 	case io.Reader:
-		payload, err = io.ReadAll(d)
-		if err != nil {
-			return buildResponse(ctx, nil, err)
-		}
+		payload = d
 	default:
-		payload, err = json.Marshal(data)
+		bs, err := json.Marshal(data)
 		if err != nil {
 			return buildResponse(ctx, nil, err)
 		}
+		payload = bytes.NewBuffer(bs)
 	}
 	opts = append([]Option{WithHeader("Content-Type", "application/json; charset=utf-8")}, opts...)
 	return c.Post(ctx, urlstr, payload, opts...)

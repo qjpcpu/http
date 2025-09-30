@@ -55,15 +55,21 @@ type Client interface {
 	Download(ctx context.Context, uri string, w io.Writer, opts ...Option) error
 	// Get is a convenience method for executing a GET request.
 	Get(ctx context.Context, uri string, opts ...Option) *Response
-	// Post is a convenience method for executing a POST request with a byte slice body.
-	Post(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response
-	// Delete is a convenience method for executing a DELETE request.
-	Delete(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response
-	// Put is a convenience method for executing a PUT request.
-	Put(ctx context.Context, urlstr string, data []byte, opts ...Option) *Response
+	// Post is a convenience method for executing a POST request with an io.Reader body.
+	Post(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response
+	// Delete is a convenience method for executing a DELETE request with an io.Reader body.
+	Delete(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response
+	// Put is a convenience method for executing a PUT request with an io.Reader body.
+	Put(ctx context.Context, urlstr string, data io.Reader, opts ...Option) *Response
 	// PostForm is a convenience method for sending a POST request with "application/x-www-form-urlencoded" format.
 	PostForm(ctx context.Context, urlstr string, data map[string]any, opts ...Option) *Response
 	// PostJSON is a convenience method for sending a POST request with a JSON body.
+	// It automatically sets the "Content-Type" header to "application/json; charset=utf-8".
+	// The `data` parameter can be of various types:
+	//   - A struct or map: It will be marshaled into a JSON object using `json.Marshal`.
+	//   - A string, []byte, or json.RawMessage: It will be sent as the raw request body.
+	//   - An io.Reader: The stream's content will be sent as the request body.
+	//   - nil: An empty request body will be sent.
 	PostJSON(ctx context.Context, urlstr string, data any, opts ...Option) *Response
 	// WithDialer allows setting a custom dialer function for the client's Transport.
 	WithDialer(dialFn DialContextFunc) Client
