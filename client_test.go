@@ -1356,6 +1356,45 @@ func TestMiddlewareDebugDisabled(t *testing.T) {
 	}
 }
 
+func TestJSONReader(t *testing.T) {
+	// Case 1: nil input
+	if r := JSONReader(nil); r != nil {
+		t.Errorf("JSONReader(nil) = %v, want nil", r)
+	}
+
+	// Case 2: io.Reader input
+	inputReader := strings.NewReader("test reader")
+	if r := JSONReader(inputReader); r != inputReader {
+		t.Errorf("JSONReader(io.Reader) did not return the same reader")
+	}
+
+	// Case 3: Valid struct input
+	validStruct := struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}{"Gemini", 1}
+	rValid := JSONReader(validStruct)
+	body, err := io.ReadAll(rValid)
+	if err != nil {
+		t.Fatalf("Failed to read from reader returned by JSONReader for valid struct: %v", err)
+	}
+	expectedJSON := `{"name":"Gemini","age":1}`
+	if string(body) != expectedJSON {
+		t.Errorf("JSONReader(valid struct) produced %q, want %q", string(body), expectedJSON)
+	}
+
+	// Case 4: Invalid struct for JSON marshaling
+	invalidStruct := make(chan int)
+	rInvalid := JSONReader(invalidStruct)
+	_, err = io.ReadAll(rInvalid)
+	if err == nil {
+		t.Fatal("Expected an error from reading the result of JSONReader with an invalid struct, but got nil")
+	}
+	if _, ok := err.(*json.UnsupportedTypeError); !ok {
+		t.Errorf("Expected a json.UnsupportedTypeError, but got %T: %v", err, err)
+	}
+}
+
 func TestTCPKeepAliveWhenUserSetTimeoutContext(t *testing.T) {
 	server := NewTCPServer()
 	server.Start()

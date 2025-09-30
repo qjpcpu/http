@@ -1,6 +1,9 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -110,4 +113,24 @@ func setRequestHeader(req *http.Request, header map[string]string) {
 			req.Host = v
 		}
 	}
+}
+
+func JSONReader(object any) io.Reader {
+	if object == nil {
+		return nil
+	}
+	if reader, ok := object.(io.Reader); ok {
+		return reader
+	}
+	bs, err := json.Marshal(object)
+	if err != nil {
+		return errReader{err: err}
+	}
+	return bytes.NewBuffer(bs)
+}
+
+type errReader struct{ err error }
+
+func (err errReader) Read([]byte) (int, error) {
+	return 0, err.err
 }
