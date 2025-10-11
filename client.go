@@ -284,7 +284,7 @@ func (client *clientImpl) makeFinalHandler(extraMiddlewares ...Middleware) Endpo
 		//    pattern using a `sync.Pool` for efficiency.
 		timeout := defaultConnectTimeout // Fallback to default connect timeout
 		gv := getValue(req)
-		if gv != nil && gv.Timeout > 0 {
+		if gv != nil && gv.Timeout != timeoutNotSet {
 			timeout = gv.Timeout
 		}
 		c := poolGetClient(client.transport, timeout)

@@ -9,7 +9,8 @@ import (
 type contextKey string
 
 const (
-	keyContext = contextKey("http-context")
+	keyContext    = contextKey("http-context")
+	timeoutNotSet = time.Duration(-1)
 )
 
 type gValue struct {
@@ -30,7 +31,9 @@ func getValue(req *http.Request) *gValue {
 
 func getOrCreateValue(req *http.Request) *gValue {
 	if gv := getValue(req); gv == nil {
-		gv := &gValue{}
+		gv := &gValue{
+			Timeout: timeoutNotSet,
+		}
 		return gv
 	} else {
 		return gv
