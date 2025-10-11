@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"time"
 )
 
 const anyMethod = "*"
@@ -23,12 +22,8 @@ type ServerOption func(*http.Server)
 
 func NewServer() *Server {
 	s := &Server{
-		mux: http.NewServeMux(),
-		server: &http.Server{
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
-			IdleTimeout:  60 * time.Second,
-		},
+		mux:    http.NewServeMux(),
+		server: &http.Server{},
 	}
 	return s
 }
