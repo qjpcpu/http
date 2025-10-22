@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -48,10 +50,35 @@ func (s *Server) Any(pattern string, h http.HandlerFunc) {
 	s.Handle(anyMethod, pattern, h)
 }
 
-func (s *Server) ListenAndServe(addr string, opts ...ServerOption) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+func (s *Server) ListenAndServe(network, addr string, opts ...ServerOption) error {
+	var ln net.Listener
+	switch network {
+	case "unix":
+		sock, err := filepath.Abs(addr)
+		if err != nil {
+			return err
+		}
+		dir := filepath.Dir(sock)
+		if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) {
+			os.MkdirAll(dir, 0755)
+		}
+		os.RemoveAll(sock)
+		unixAddr, err := net.ResolveUnixAddr("unix", sock)
+		if err != nil {
+			return err
+		}
+		ln, err = net.ListenUnix("unix", unixAddr)
+		if err != nil {
+			return fmt.Errorf("failed to listen on %s: %w", addr, err)
+		}
+	case "tcp":
+		var err error
+		ln, err = net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("failed to listen on %s: %w", addr, err)
+		}
+	default:
+		return fmt.Errorf("not support network %s", network)
 	}
 	return s.Serve(ln, opts...)
 }
