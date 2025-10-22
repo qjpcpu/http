@@ -64,8 +64,8 @@ func (s *Server) Serve(ln net.Listener, opts ...ServerOption) error {
 	return s.server.Serve(ln)
 }
 
-func (s *Server) Close() error {
-	return s.server.Shutdown(context.Background())
+func (s *Server) Close(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }
 
 func (s *Server) Handle(method, pattern string, h http.HandlerFunc) {
